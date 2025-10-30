@@ -14,6 +14,7 @@ pub enum FfiType {
     I64,
     F64,
     Str,
+    Opaque,
 }
 
 #[repr(C)]

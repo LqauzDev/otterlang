@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
 
@@ -12,6 +13,7 @@ use sha1::{Digest, Sha1};
 use tracing::debug;
 
 use crate::cache::path::cache_root;
+use crate::runtime::ffi_api;
 use crate::runtime::symbol_registry::{FfiFunction, FfiSignature, FfiType, SymbolRegistry};
 
 #[derive(Clone, Copy)]
@@ -21,9 +23,15 @@ pub struct SymbolProvider {
 
 inventory::collect!(crate::runtime::ffi::SymbolProvider);
 
+type JsonDispatcher = unsafe extern "C" fn(
+    *const std::os::raw::c_char,
+    *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char;
+
 pub struct Runtime {
     registry: &'static SymbolRegistry,
     libraries: HashMap<String, Library>,
+    json_dispatchers: HashMap<String, JsonDispatcher>,
     ffi_root: PathBuf,
 }
 
@@ -37,6 +45,7 @@ impl Runtime {
         Ok(Self {
             registry,
             libraries: HashMap::new(),
+            json_dispatchers: HashMap::new(),
             ffi_root,
         })
     }
@@ -83,9 +92,35 @@ impl Runtime {
             debug!(error = %err, "ffi register failed");
         }
 
+        if let Ok(dispatcher) = unsafe { library.get::<JsonDispatcher>(b"otter_call_json") } {
+            self.json_dispatchers
+                .insert(crate_name.to_string(), *dispatcher);
+        }
+
         self.libraries.insert(crate_name.to_string(), library);
 
         Ok(())
+    }
+
+    pub fn call_json(&mut self, crate_name: &str, func: &str, args_json: &str) -> Result<String> {
+        self.load_crate(crate_name)?;
+        let dispatcher = self
+            .json_dispatchers
+            .get(crate_name)
+            .ok_or_else(|| anyhow!("crate `{crate_name}` does not expose otter_call_json"))?;
+
+        let func_cstr = CString::new(func)
+            .with_context(|| format!("failed to convert function name `{func}` to CString"))?;
+        let args_cstr = CString::new(args_json)
+            .with_context(|| format!("failed to convert args JSON for `{func}`"))?;
+
+        let raw = unsafe { dispatcher(func_cstr.as_ptr(), args_cstr.as_ptr()) };
+        if raw.is_null() {
+            bail!("json dispatcher returned null for `{crate_name}:{func}`");
+        }
+
+        let result = unsafe { ffi_api::cstring_to_otter(raw) }?;
+        Ok(result)
     }
 }
 

@@ -1,0 +1,5 @@
+use rust:rayon
+
+fn main:
+    threads = rayon.num_threads()
+    print(f"Rayon reports {threads} worker threads")

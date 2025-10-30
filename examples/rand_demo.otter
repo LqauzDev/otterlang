@@ -1,0 +1,5 @@
+use rust:rand
+
+fn main:
+    value = rand.random_f64()
+    print(f"Random value from Rust: {value}")

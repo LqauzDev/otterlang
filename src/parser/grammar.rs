@@ -1,7 +1,9 @@
 use chumsky::prelude::*;
 use chumsky::Stream;
 
-use crate::ast::nodes::{BinaryOp, Expr, Function, Literal, Program, Statement, Block, Param, UnaryOp, FStringPart};
+use crate::ast::nodes::{
+    BinaryOp, Block, Expr, FStringPart, Function, Literal, Param, Program, Statement, UnaryOp,
+};
 use crate::lexer::token::{Span, Token, TokenKind};
 use crate::utils::errors::{Diagnostic, DiagnosticSeverity};
 
@@ -61,6 +63,8 @@ fn identifier_parser() -> impl Parser<TokenKind, String, Error = Simple<TokenKin
 }
 
 fn parse_fstring(content: String) -> Expr {
+    use chumsky::Parser;
+
     // Parse f-string by splitting on braces and parsing expressions
     let mut parts = Vec::new();
     let mut current_text = String::new();
@@ -90,11 +94,39 @@ fn parse_fstring(content: String) -> Expr {
                     }
 
                     if !expr_content.is_empty() {
-                        // Parse the expression content
-                        // For now, simple identifier parsing
+                        // Parse the expression content using the full expression parser
                         let trimmed = expr_content.trim();
                         if !trimmed.is_empty() {
-                            parts.push(FStringPart::Expr(Box::new(Expr::Identifier(trimmed.to_string()))));
+                            match crate::lexer::tokenize(trimmed) {
+                                Ok(tokens) => {
+                                    // Create a stream from tokens for the parser
+                                    use chumsky::Stream;
+                                    let end_span = tokens.last().map(|t| t.span.end()).unwrap_or(0);
+                                    let stream = Stream::from_iter(
+                                        end_span..end_span + 1,
+                                        tokens
+                                            .iter()
+                                            .map(|token| (token.kind.clone(), token.span.into())),
+                                    );
+                                    match expr_parser().parse(stream) {
+                                        Ok(expr) => {
+                                            parts.push(FStringPart::Expr(Box::new(expr)));
+                                        }
+                                        Err(_) => {
+                                            // Fallback to simple identifier if parsing fails
+                                            parts.push(FStringPart::Expr(Box::new(
+                                                Expr::Identifier(trimmed.to_string()),
+                                            )));
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    // Fallback to simple identifier if tokenization fails
+                                    parts.push(FStringPart::Expr(Box::new(Expr::Identifier(
+                                        trimmed.to_string(),
+                                    ))));
+                                }
+                            }
                         }
                     }
                 }
@@ -118,7 +150,10 @@ fn parse_fstring(content: String) -> Expr {
     }
 
     // If no expressions found, treat as regular string
-    if parts.iter().all(|part| matches!(part, FStringPart::Text(_))) {
+    if parts
+        .iter()
+        .all(|part| matches!(part, FStringPart::Text(_)))
+    {
         if let Some(FStringPart::Text(text)) = parts.first() {
             return Expr::Literal(Literal::String(text.clone()));
         }
@@ -167,7 +202,7 @@ fn expr_parser() -> impl Parser<TokenKind, Expr, Error = Simple<TokenKind>> {
             .then(
                 just(TokenKind::Dot)
                     .ignore_then(identifier_parser())
-                    .repeated()
+                    .repeated(),
             )
             .foldl(|object, field| Expr::Member {
                 object: Box::new(object),
@@ -194,15 +229,29 @@ fn expr_parser() -> impl Parser<TokenKind, Expr, Error = Simple<TokenKind>> {
             })
             .boxed();
 
+        let await_expr = just(TokenKind::Await)
+            .ignore_then(call.clone())
+            .map(|expr| Expr::Await(Box::new(expr)));
+
+        let spawn_expr = just(TokenKind::Spawn)
+            .ignore_then(call.clone())
+            .map(|expr| Expr::Spawn(Box::new(expr)));
+
         let unary = choice((
             just(TokenKind::Minus).to(UnaryOp::Neg),
             just(TokenKind::Bang).to(UnaryOp::Not),
         ))
-        .then(call.clone())
+        .then(choice((
+            await_expr.clone(),
+            spawn_expr.clone(),
+            call.clone(),
+        )))
         .map(|(op, expr)| Expr::Unary {
             op,
             expr: Box::new(expr),
         })
+        .or(await_expr)
+        .or(spawn_expr)
         .or(call.clone())
         .boxed();
 
@@ -302,10 +351,12 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             expr.clone()
                 .delimited_by(just(TokenKind::LParen), just(TokenKind::RParen)),
         )
-        .map(|arg| Statement::Expr(Expr::Call {
-            func: Box::new(Expr::Identifier("print".to_string())),
-            args: vec![arg],
-        }));
+        .map(|arg| {
+            Statement::Expr(Expr::Call {
+                func: Box::new(Expr::Identifier("print".to_string())),
+                args: vec![arg],
+            })
+        });
 
     let return_stmt = just(TokenKind::Return)
         .ignore_then(expr.clone().or_not())
@@ -344,7 +395,11 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .ignore_then(identifier_parser())
         .then_ignore(just(TokenKind::Colon))
         .then(identifier_parser())
-        .then(just(TokenKind::As).ignore_then(identifier_parser()).or_not())
+        .then(
+            just(TokenKind::As)
+                .ignore_then(identifier_parser())
+                .or_not(),
+        )
         .map(|((namespace, module), alias)| Statement::Use {
             module: format!("{}:{}", namespace, module),
             alias,
@@ -359,13 +414,25 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             .ignore_then(expr.clone())
             .then_ignore(just(TokenKind::Colon))
             .then_ignore(newline.clone())
-            .then(stmt.clone().repeated().at_least(1).delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent)).map(Block::new))
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .at_least(1)
+                    .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
+                    .map(Block::new),
+            )
             .then(
                 just(TokenKind::Else)
                     .ignore_then(just(TokenKind::Colon))
                     .ignore_then(newline.clone())
-                    .then(stmt.clone().repeated().at_least(1).delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent)).map(Block::new))
-                    .or_not()
+                    .then(
+                        stmt.clone()
+                            .repeated()
+                            .at_least(1)
+                            .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
+                            .map(Block::new),
+                    )
+                    .or_not(),
             )
             .map(|((cond, then_block), else_block)| Statement::If {
                 cond: Box::new(cond),
@@ -380,7 +447,13 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             .then(expr.clone())
             .then_ignore(just(TokenKind::Colon))
             .then_ignore(newline.clone())
-            .then(stmt.clone().repeated().at_least(1).delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent)).map(Block::new))
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .at_least(1)
+                    .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
+                    .map(Block::new),
+            )
             .map(|((var, iterable), body)| Statement::For {
                 var,
                 iterable,
@@ -411,9 +484,13 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .map(Block::new);
 
     let function_param = identifier_parser()
-        .then(just(TokenKind::Colon).ignore_then(identifier_parser()).or_not())
+        .then(
+            just(TokenKind::Colon)
+                .ignore_then(identifier_parser())
+                .or_not(),
+        )
         .map(|(name, ty)| Param::new(name, ty));
-    
+
     let function_params = function_param
         .separated_by(just(TokenKind::Comma))
         .allow_trailing()

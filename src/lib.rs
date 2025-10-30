@@ -2,6 +2,7 @@ pub mod ast;
 pub mod cache;
 pub mod cli;
 pub mod codegen;
+pub mod ffi;
 pub mod lexer;
 pub mod parser;
 pub mod runtime;

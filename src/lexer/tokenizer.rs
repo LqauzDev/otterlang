@@ -65,498 +65,591 @@ impl LexerError {
 
 pub type LexResult<T> = Result<T, Vec<LexerError>>;
 
+// Optimized lexer state machine
+struct LexerState {
+    tokens: Vec<Token>,
+    errors: Vec<LexerError>,
+    indent_stack: Vec<usize>,
+    source: Vec<u8>,
+    offset: usize,
+    line: usize,
+    column: usize,
+}
+
+impl LexerState {
+    fn new(source: &str) -> Self {
+        Self {
+            tokens: Vec::new(),
+            errors: Vec::new(),
+            indent_stack: vec![0],
+            source: source.as_bytes().to_vec(),
+            offset: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    fn current_char(&self) -> Option<u8> {
+        self.source.get(self.offset).copied()
+    }
+
+    fn peek_char(&self, ahead: usize) -> Option<u8> {
+        self.source.get(self.offset + ahead).copied()
+    }
+
+    fn advance(&mut self, count: usize) {
+        for _ in 0..count {
+            if self.current_char() == Some(b'\n') {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+            self.offset += 1;
+        }
+    }
+
+    fn create_span(&self, start: usize, len: usize) -> Span {
+        Span::new(start, start + len)
+    }
+
+    fn emit_token(&mut self, kind: TokenKind, start: usize, len: usize) {
+        let span = Span::new(start, start + len);
+        self.tokens.push(Token::new(kind, span));
+    }
+
+    fn emit_error(&mut self, error: LexerError) {
+        self.errors.push(error);
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.offset >= self.source.len()
+    }
+}
+
 pub fn tokenize(source: &str) -> LexResult<Vec<Token>> {
-    let mut tokens = Vec::new();
-    let mut indent_stack = vec![0usize];
-    let mut errors = Vec::new();
-    let mut offset = 0usize;
+    let mut state = LexerState::new(source);
 
-    for (line_idx, chunk) in source.split_inclusive('\n').enumerate() {
-        let has_newline = chunk.ends_with('\n');
-        let line_number = line_idx + 1;
-        let line_without_newline = if has_newline {
-            &chunk[..chunk.len() - 1]
-        } else {
-            chunk
-        };
-        let line_offset = offset;
+    // Pre-allocate capacity for better performance
+    let estimated_tokens = source.len() / 4; // Rough estimate
+    state.tokens.reserve(estimated_tokens);
 
-        let mut idx = 0usize;
-        let mut indent_width = 0usize;
-        let mut column = 1usize;
+    while !state.is_at_end() {
+        state.process_line();
+    }
 
-        while idx < line_without_newline.len() {
-            match line_without_newline.as_bytes()[idx] {
+    // Finalize indentation and add EOF
+    state.finalize_indentation();
+
+    if state.errors.is_empty() {
+        Ok(state.tokens)
+    } else {
+        Err(state.errors)
+    }
+}
+
+impl LexerState {
+    fn process_line(&mut self) {
+        let line_start = self.offset;
+        let mut indent_width = 0;
+
+        // Process indentation
+        while let Some(ch) = self.current_char() {
+            match ch {
                 b' ' => {
                     indent_width += 1;
-                    idx += 1;
-                    column += 1;
+                    self.advance(1);
                 }
                 b'\t' => {
-                    let span = Span::new(line_offset + idx, line_offset + idx + 1);
-                    errors.push(LexerError::TabsNotAllowed {
-                        line: line_number,
-                        column,
+                    let span = self.create_span(self.offset, 1);
+                    self.emit_error(LexerError::TabsNotAllowed {
+                        line: self.line,
+                        column: self.column,
                         span,
                     });
-                    idx += 1;
-                    column += 1;
+                    self.advance(1);
+                }
+                b'\n' => {
+                    // Empty line, just add newline
+                    self.emit_token(TokenKind::Newline, self.offset, 1);
+                    self.advance(1);
+                    return;
+                }
+                b'#' => {
+                    // Comment line, skip to end
+                    self.skip_to_end_of_line();
+                    return;
                 }
                 _ => break,
             }
         }
 
-        let rest = &line_without_newline[idx..];
-        let is_blank = rest.trim().is_empty();
-        let is_comment = rest.starts_with('#');
+        let rest_start = self.offset;
+        let is_blank = self.skip_whitespace_and_check_blank();
 
-        if is_blank || is_comment {
-            offset += chunk.len();
-            continue;
+        if is_blank {
+            // Add newline if we haven't already
+            if let Some(b'\n') = self.current_char() {
+                self.emit_token(TokenKind::Newline, self.offset, 1);
+                self.advance(1);
+            }
+            return;
         }
 
-        let current_indent = indent_width;
-        let last_indent = *indent_stack.last().unwrap();
+        // Handle indentation changes
+        self.handle_indentation(indent_width, line_start);
+
+        // Tokenize the rest of the line
+        self.tokenize_line_content(rest_start);
+    }
+
+    fn skip_whitespace_and_check_blank(&mut self) -> bool {
+        let mut has_non_whitespace = false;
+        while let Some(ch) = self.current_char() {
+            match ch {
+                b' ' | b'\t' => {
+                    self.advance(1);
+                }
+                b'\n' => break,
+                b'#' => break,
+                _ => {
+                    has_non_whitespace = true;
+                    break;
+                }
+            }
+        }
+        !has_non_whitespace
+    }
+
+    fn handle_indentation(&mut self, current_indent: usize, line_start: usize) {
+        let last_indent = *self.indent_stack.last().unwrap();
 
         if current_indent > last_indent {
-            indent_stack.push(current_indent);
-            let span = Span::new(line_offset + last_indent, line_offset + current_indent);
-            tokens.push(Token::new(TokenKind::Indent, span));
+            self.indent_stack.push(current_indent);
+            self.emit_token(
+                TokenKind::Indent,
+                line_start + last_indent,
+                current_indent - last_indent,
+            );
         } else if current_indent < last_indent {
-            while current_indent < *indent_stack.last().unwrap() {
-                let top = indent_stack.pop().unwrap();
-                let span = Span::new(line_offset + current_indent, line_offset + top);
-                tokens.push(Token::new(TokenKind::Dedent, span));
-            }
-            if current_indent != *indent_stack.last().unwrap() {
-                let span = Span::new(
-                    line_offset + current_indent,
-                    line_offset + current_indent + 1,
+            while current_indent < *self.indent_stack.last().unwrap() {
+                let top = self.indent_stack.pop().unwrap();
+                self.emit_token(
+                    TokenKind::Dedent,
+                    line_start + current_indent,
+                    top - current_indent,
                 );
-                errors.push(LexerError::IndentationMismatch {
-                    line: line_number,
-                    expected: *indent_stack.last().unwrap(),
+            }
+            if current_indent != *self.indent_stack.last().unwrap() {
+                let span = self.create_span(line_start + current_indent, 1);
+                self.emit_error(LexerError::IndentationMismatch {
+                    line: self.line,
+                    expected: *self.indent_stack.last().unwrap(),
                     found: current_indent,
                     span,
                 });
             }
         }
+    }
 
-        let mut i = idx;
-        while i < line_without_newline.len() {
-            let absolute_start = line_offset + i;
-            let column_index = i + 1;
+    fn tokenize_line_content(&mut self, start: usize) {
+        while !self.is_at_end() {
+            let ch = match self.current_char() {
+                Some(ch) => ch,
+                None => break,
+            };
 
-            // Handle multi-character operators first
-            if i + 1 < line_without_newline.len() && line_without_newline.is_char_boundary(i) && line_without_newline.is_char_boundary(i + 2) {
-                let two_chars = &line_without_newline[i..i + 2];
-                match two_chars {
-                    "==" => {
-                        tokens.push(Token::new(
-                            TokenKind::EqEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "!=" => {
-                        tokens.push(Token::new(
-                            TokenKind::Neq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "<=" => {
-                        tokens.push(Token::new(
-                            TokenKind::LtEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    ">=" => {
-                        tokens.push(Token::new(
-                            TokenKind::GtEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "->" => {
-                        tokens.push(Token::new(
-                            TokenKind::Arrow,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    ".." => {
-                        tokens.push(Token::new(
-                            TokenKind::DoubleDot,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "+=" => {
-                        tokens.push(Token::new(
-                            TokenKind::PlusEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "-=" => {
-                        tokens.push(Token::new(
-                            TokenKind::MinusEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "*=" => {
-                        tokens.push(Token::new(
-                            TokenKind::StarEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    "/=" => {
-                        tokens.push(Token::new(
-                            TokenKind::SlashEq,
-                            Span::new(absolute_start, absolute_start + 2),
-                        ));
-                        i += 2;
-                        continue;
-                    }
-                    _ => {}
-                }
-            }
-
-            match line_without_newline.as_bytes()[i] {
-                b' ' | b'\t' => {
-                    i += 1;
+            match ch {
+                b'\n' => {
+                    self.emit_token(TokenKind::Newline, self.offset, 1);
+                    self.advance(1);
+                    return;
                 }
                 b'#' => {
-                    break;
+                    self.skip_to_end_of_line();
+                    return;
                 }
-                b'(' => {
-                    tokens.push(Token::new(
-                        TokenKind::LParen,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
+                b' ' | b'\t' => {
+                    self.advance(1);
                 }
-                b')' => {
-                    tokens.push(Token::new(
-                        TokenKind::RParen,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
+                _ => {
+                    self.tokenize_token(start);
                 }
-                b'{' => {
-                    tokens.push(Token::new(
-                        TokenKind::LBrace,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'}' => {
-                    tokens.push(Token::new(
-                        TokenKind::RBrace,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'[' => {
-                    tokens.push(Token::new(
-                        TokenKind::LBracket,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b']' => {
-                    tokens.push(Token::new(
-                        TokenKind::RBracket,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b',' => {
-                    tokens.push(Token::new(
-                        TokenKind::Comma,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'.' => {
-                    tokens.push(Token::new(
-                        TokenKind::Dot,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'+' => {
-                    tokens.push(Token::new(
-                        TokenKind::Plus,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'-' => {
-                    tokens.push(Token::new(
-                        TokenKind::Minus,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'*' => {
-                    tokens.push(Token::new(
-                        TokenKind::Star,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'/' => {
-                    tokens.push(Token::new(
-                        TokenKind::Slash,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'%' => {
-                    tokens.push(Token::new(
-                        TokenKind::Percent,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'|' => {
-                    tokens.push(Token::new(
-                        TokenKind::Pipe,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'&' => {
-                    tokens.push(Token::new(
-                        TokenKind::Amp,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'!' => {
-                    tokens.push(Token::new(
-                        TokenKind::Bang,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b':' => {
-                    tokens.push(Token::new(
-                        TokenKind::Colon,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'=' => {
-                    tokens.push(Token::new(
-                        TokenKind::Equals,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'<' => {
-                    tokens.push(Token::new(
-                        TokenKind::Lt,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'>' => {
-                    tokens.push(Token::new(
-                        TokenKind::Gt,
-                        Span::new(absolute_start, absolute_start + 1),
-                    ));
-                    i += 1;
-                }
-                b'f' => {
-                    // Check if this is followed by a quote (f-string)
-                    if i + 1 < line_without_newline.len() && line_without_newline.as_bytes()[i + 1] == b'"' {
-                        let start = i;
-                        i += 2; // Skip f"
-                        let mut value = String::new();
+            }
+        }
+    }
 
-                        // Parse until closing "
-                        while i < line_without_newline.len() && line_without_newline.as_bytes()[i] != b'"' {
-                            value.push(line_without_newline.as_bytes()[i] as char);
-                            i += 1;
-                        }
+    fn tokenize_token(&mut self, _line_start: usize) {
+        let _token_start = self.offset;
 
-                        let span = Span::new(line_offset + start, line_offset + i + 1);
-                        tokens.push(Token::new(
-                            TokenKind::FString(value),
-                            span,
-                        ));
-                        i += 1;
-                    } else {
-                        // Regular identifier starting with 'f'
-                        let start = i;
-                        i += 1;
-                        while i < line_without_newline.len()
-                            && (line_without_newline.as_bytes()[i].is_ascii_alphanumeric()
-                                || line_without_newline.as_bytes()[i] == b'_')
-                        {
-                            i += 1;
-                        }
-                        let value = &line_without_newline[start..i];
-                        let span = Span::new(line_offset + start, line_offset + i);
-                        let kind = match value {
-                            "fn" => TokenKind::Fn,
-                            "for" => TokenKind::For,
-                            "false" => TokenKind::False,
-                            _ => TokenKind::Identifier(value.to_string()),
-                        };
-                        tokens.push(Token::new(kind, span));
-                    }
+        match self.current_char().unwrap() {
+            b'(' => {
+                self.emit_token(TokenKind::LParen, self.offset, 1);
+                self.advance(1);
+            }
+            b')' => {
+                self.emit_token(TokenKind::RParen, self.offset, 1);
+                self.advance(1);
+            }
+            b'{' => {
+                self.emit_token(TokenKind::LBrace, self.offset, 1);
+                self.advance(1);
+            }
+            b'}' => {
+                self.emit_token(TokenKind::RBrace, self.offset, 1);
+                self.advance(1);
+            }
+            b'[' => {
+                self.emit_token(TokenKind::LBracket, self.offset, 1);
+                self.advance(1);
+            }
+            b']' => {
+                self.emit_token(TokenKind::RBracket, self.offset, 1);
+                self.advance(1);
+            }
+            b',' => {
+                self.emit_token(TokenKind::Comma, self.offset, 1);
+                self.advance(1);
+            }
+            b'.' => {
+                if self.peek_char(1) == Some(b'.') {
+                    self.emit_token(TokenKind::DoubleDot, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Dot, self.offset, 1);
+                    self.advance(1);
                 }
+            }
+            b':' => {
+                self.emit_token(TokenKind::Colon, self.offset, 1);
+                self.advance(1);
+            }
+            b'+' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::PlusEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Plus, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'-' => match self.peek_char(1) {
+                Some(b'=') => {
+                    self.emit_token(TokenKind::MinusEq, self.offset, 2);
+                    self.advance(2);
+                }
+                Some(b'>') => {
+                    self.emit_token(TokenKind::Arrow, self.offset, 2);
+                    self.advance(2);
+                }
+                _ => {
+                    self.emit_token(TokenKind::Minus, self.offset, 1);
+                    self.advance(1);
+                }
+            },
+            b'*' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::StarEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Star, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'/' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::SlashEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Slash, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'%' => {
+                self.emit_token(TokenKind::Percent, self.offset, 1);
+                self.advance(1);
+            }
+            b'|' => {
+                self.emit_token(TokenKind::Pipe, self.offset, 1);
+                self.advance(1);
+            }
+            b'&' => {
+                self.emit_token(TokenKind::Amp, self.offset, 1);
+                self.advance(1);
+            }
+            b'!' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::Neq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Bang, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'=' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::EqEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Equals, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'<' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::LtEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Lt, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'>' => {
+                if self.peek_char(1) == Some(b'=') {
+                    self.emit_token(TokenKind::GtEq, self.offset, 2);
+                    self.advance(2);
+                } else {
+                    self.emit_token(TokenKind::Gt, self.offset, 1);
+                    self.advance(1);
+                }
+            }
+            b'"' => {
+                self.tokenize_string();
+            }
+            b'f' => {
+                // Check for f-string before treating as regular identifier
+                if self.peek_char(1) == Some(b'"') {
+                    self.tokenize_fstring();
+                } else {
+                    self.tokenize_identifier_or_keyword();
+                }
+            }
+            ch if ch.is_ascii_digit() => {
+                self.tokenize_number();
+            }
+            ch if ch.is_ascii_alphabetic() || ch == b'_' => {
+                self.tokenize_identifier_or_keyword();
+            }
+            ch if ch > 127 => {
+                self.tokenize_unicode_identifier();
+            }
+            _ => {
+                let ch = self.current_char().unwrap();
+                let span = self.create_span(self.offset, 1);
+                self.emit_error(LexerError::UnexpectedCharacter {
+                    ch: ch as char,
+                    line: self.line,
+                    column: self.column,
+                    span,
+                });
+                self.advance(1);
+            }
+        }
+    }
+
+    fn tokenize_string(&mut self) {
+        let start = self.offset;
+        self.advance(1); // Skip opening quote
+
+        while let Some(ch) = self.current_char() {
+            match ch {
                 b'"' => {
-                    let start = i;
-                    i += 1;
-                    let mut value = String::new();
-
-                    // Regular string (f-strings are handled by the 'f' case above)
-                    while i < line_without_newline.len() && line_without_newline.as_bytes()[i] != b'"' {
-                        value.push(line_without_newline.as_bytes()[i] as char);
-                        i += 1;
-                    }
-
-                    let span = Span::new(line_offset + start, line_offset + i + 1);
-                    tokens.push(Token::new(
-                        TokenKind::StringLiteral(value),
+                    let value = unsafe {
+                        std::str::from_utf8_unchecked(&self.source[start + 1..self.offset])
+                    };
+                    let span = Span::new(start, self.offset + 1);
+                    self.tokens.push(Token::new(
+                        TokenKind::StringLiteral(value.to_string()),
                         span,
                     ));
-                    i += 1;
+                    self.advance(1);
+                    return;
                 }
-                ch if ch.is_ascii_digit() => {
-                    let start = i;
-                    i += 1;
-                    while i < line_without_newline.len()
-                        && (line_without_newline.as_bytes()[i].is_ascii_digit()
-                            || line_without_newline.as_bytes()[i] == b'_')
-                    {
-                        i += 1;
-                    }
-                    // Check for decimal point, but not if it's followed by another dot (range operator)
-                    if i < line_without_newline.len() 
-                        && line_without_newline.as_bytes()[i] == b'.'
-                        && (i + 1 >= line_without_newline.len() || line_without_newline.as_bytes()[i + 1] != b'.')
-                    {
-                        i += 1;
-                        while i < line_without_newline.len()
-                            && (line_without_newline.as_bytes()[i].is_ascii_digit()
-                                || line_without_newline.as_bytes()[i] == b'_')
-                        {
-                            i += 1;
-                        }
-                    }
-                    let value = &line_without_newline[start..i];
-                    let span = Span::new(line_offset + start, line_offset + i);
-                    tokens.push(Token::new(TokenKind::Number(value.to_string()), span));
-                }
-                ch if ch.is_ascii_alphabetic() || ch == b'_' => {
-                    let start = i;
-                    i += 1;
-                    while i < line_without_newline.len()
-                        && (line_without_newline.as_bytes()[i].is_ascii_alphanumeric()
-                            || line_without_newline.as_bytes()[i] == b'_')
-                    {
-                        i += 1;
-                    }
-                    let value = &line_without_newline[start..i];
-                    let span = Span::new(line_offset + start, line_offset + i);
-                    let kind = match value {
-                        "fn" => TokenKind::Fn,
-                        "let" => TokenKind::Let,
-                        "return" => TokenKind::Return,
-                        "if" => TokenKind::If,
-                        "else" => TokenKind::Else,
-                        "elif" => TokenKind::Elif,
-                        "for" => TokenKind::For,
-                        "while" => TokenKind::While,
-                        "break" => TokenKind::Break,
-                        "continue" => TokenKind::Continue,
-                        "in" => TokenKind::In,
-                        "use" => TokenKind::Use,
-                        "from" => TokenKind::From,
-                        "as" => TokenKind::As,
-                        "async" => TokenKind::Async,
-                        "await" => TokenKind::Await,
-                        "spawn" => TokenKind::Spawn,
-                        "match" => TokenKind::Match,
-                        "case" => TokenKind::Case,
-                        "true" => TokenKind::True,
-                        "false" => TokenKind::False,
-                        "print" => TokenKind::Print,
-                        _ => TokenKind::Identifier(value.to_string()),
-                    };
-                    tokens.push(Token::new(kind, span));
-                }
-                ch if ch > 127 => {
-                    // Unicode identifier (like π, α, Δ)
-                    let start = i;
-                    i += 1;
-                    while i < line_without_newline.len() {
-                        let next_ch = line_without_newline.as_bytes()[i];
-                        if next_ch.is_ascii_alphanumeric() || next_ch == b'_' || next_ch > 127 {
-                            i += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    let value = &line_without_newline[start..i];
-                    let span = Span::new(line_offset + start, line_offset + i);
-                    tokens.push(Token::new(TokenKind::UnicodeIdentifier(value.to_string()), span));
-                }
-                other => {
-                    let span = Span::new(absolute_start, absolute_start + 1);
-                    errors.push(LexerError::UnexpectedCharacter {
-                        ch: other as char,
-                        line: line_number,
-                        column: column_index,
+                b'\n' => {
+                    let span = self.create_span(start, self.offset - start);
+                    self.emit_error(LexerError::UnterminatedString {
+                        line: self.line,
+                        column: self.column,
                         span,
                     });
-                    i += 1;
+                    return;
+                }
+                _ => {
+                    self.advance(1);
                 }
             }
         }
 
-        let newline_span = Span::new(
-            line_offset + line_without_newline.len(),
-            line_offset + line_without_newline.len() + 1,
+        // Unterminated string at EOF
+        let span = self.create_span(start, self.offset - start);
+        self.emit_error(LexerError::UnterminatedString {
+            line: self.line,
+            column: self.column,
+            span,
+        });
+    }
+
+    fn tokenize_fstring(&mut self) {
+        let start = self.offset;
+        self.advance(2); // Skip f"
+
+        while let Some(ch) = self.current_char() {
+            match ch {
+                b'"' => {
+                    let value = unsafe {
+                        std::str::from_utf8_unchecked(&self.source[start + 2..self.offset])
+                    };
+                    let span = Span::new(start, self.offset + 1);
+                    self.tokens
+                        .push(Token::new(TokenKind::FString(value.to_string()), span));
+                    self.advance(1);
+                    return;
+                }
+                b'\n' => {
+                    let span = self.create_span(start, self.offset - start);
+                    self.emit_error(LexerError::UnterminatedString {
+                        line: self.line,
+                        column: self.column,
+                        span,
+                    });
+                    return;
+                }
+                _ => {
+                    self.advance(1);
+                }
+            }
+        }
+
+        // Unterminated fstring at EOF
+        let span = self.create_span(start, self.offset - start);
+        self.emit_error(LexerError::UnterminatedString {
+            line: self.line,
+            column: self.column,
+            span,
+        });
+    }
+
+    fn tokenize_number(&mut self) {
+        let start = self.offset;
+
+        // Parse integer part
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_digit() || ch == b'_' {
+                self.advance(1);
+            } else {
+                break;
+            }
+        }
+
+        // Parse decimal part
+        if let Some(b'.') = self.current_char() {
+            if let Some(next) = self.peek_char(1) {
+                if next.is_ascii_digit() {
+                    self.advance(1); // Skip decimal point
+                    while let Some(ch) = self.current_char() {
+                        if ch.is_ascii_digit() || ch == b'_' {
+                            self.advance(1);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let value = unsafe { std::str::from_utf8_unchecked(&self.source[start..self.offset]) };
+        self.emit_token(
+            TokenKind::Number(value.to_string()),
+            start,
+            self.offset - start,
         );
-        tokens.push(Token::new(TokenKind::Newline, newline_span));
-
-        offset += chunk.len();
     }
 
-    while indent_stack.len() > 1 {
-        indent_stack.pop();
-        let span = Span::new(offset, offset);
-        tokens.push(Token::new(TokenKind::Dedent, span));
+    fn tokenize_identifier_or_keyword(&mut self) {
+        let start = self.offset;
+
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_alphanumeric() || ch == b'_' {
+                self.advance(1);
+            } else {
+                break;
+            }
+        }
+
+        let value = unsafe { std::str::from_utf8_unchecked(&self.source[start..self.offset]) };
+        let kind = match value {
+            "fn" => TokenKind::Fn,
+            "let" => TokenKind::Let,
+            "return" => TokenKind::Return,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "elif" => TokenKind::Elif,
+            "for" => TokenKind::For,
+            "while" => TokenKind::While,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
+            "in" => TokenKind::In,
+            "use" => TokenKind::Use,
+            "from" => TokenKind::From,
+            "as" => TokenKind::As,
+            "async" => TokenKind::Async,
+            "await" => TokenKind::Await,
+            "spawn" => TokenKind::Spawn,
+            "match" => TokenKind::Match,
+            "case" => TokenKind::Case,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "print" => TokenKind::Print,
+            _ => TokenKind::Identifier(value.to_string()),
+        };
+
+        self.emit_token(kind, start, self.offset - start);
     }
 
-    let eof_span = tokens
-        .last()
-        .map(|token| token.span)
-        .unwrap_or_else(|| Span::new(offset, offset));
-    tokens.push(Token::new(TokenKind::Eof, eof_span));
+    fn tokenize_unicode_identifier(&mut self) {
+        let start = self.offset;
 
-    if errors.is_empty() {
-        Ok(tokens)
-    } else {
-        Err(errors)
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_alphanumeric() || ch == b'_' || (ch > 127) {
+                self.advance(1);
+            } else {
+                break;
+            }
+        }
+
+        let value = unsafe { std::str::from_utf8_unchecked(&self.source[start..self.offset]) };
+        self.emit_token(
+            TokenKind::UnicodeIdentifier(value.to_string()),
+            start,
+            self.offset - start,
+        );
     }
+
+    fn skip_to_end_of_line(&mut self) {
+        while let Some(ch) = self.current_char() {
+            if ch == b'\n' {
+                self.emit_token(TokenKind::Newline, self.offset, 1);
+                self.advance(1);
+                return;
+            }
+            self.advance(1);
+        }
+        // EOF reached
+    }
+
+    fn finalize_indentation(&mut self) {
+        while self.indent_stack.len() > 1 {
+            self.indent_stack.pop();
+            let span = Span::new(self.offset, self.offset);
+            self.tokens.push(Token::new(TokenKind::Dedent, span));
+        }
+
+        let eof_span = Span::new(self.offset, self.offset);
+        self.tokens.push(Token::new(TokenKind::Eof, eof_span));
+    }
+}
+
+// Legacy function for backward compatibility - delegates to new implementation
+pub fn tokenize_legacy(source: &str) -> LexResult<Vec<Token>> {
+    tokenize(source)
 }

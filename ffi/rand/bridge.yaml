@@ -1,0 +1,15 @@
+dependency:
+  name: "rand"
+  version: "0.8"
+functions:
+  - name: "random_f64"
+    rust_path: "rand::random::<f64>()"
+    result: "F64"
+    doc: "Samples a random f64 in the range [0, 1)."
+  - name: "uniform"
+    params: ["F64", "F64"]
+    result: "F64"
+    doc: "Samples a random f64 in [min, max) via Uniform distribution."
+    call:
+      kind: expr
+      expr: "rand::distributions::Uniform::new({0},{1}).sample(&mut rand::thread_rng())"

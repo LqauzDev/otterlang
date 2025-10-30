@@ -67,7 +67,19 @@ fn register_std_io_symbols(registry: &SymbolRegistry) {
     });
 
     registry.register(FfiFunction {
+        name: "print".into(),
+        symbol: "otter_std_io_print".into(),
+        signature: FfiSignature::new(vec![FfiType::Str], FfiType::Unit),
+    });
+
+    registry.register(FfiFunction {
         name: "std.io.println".into(),
+        symbol: "otter_std_io_println".into(),
+        signature: FfiSignature::new(vec![FfiType::Str], FfiType::Unit),
+    });
+
+    registry.register(FfiFunction {
+        name: "println".into(),
         symbol: "otter_std_io_println".into(),
         signature: FfiSignature::new(vec![FfiType::Str], FfiType::Unit),
     });

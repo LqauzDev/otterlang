@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
+use parking_lot::RwLock;
 use rayon::prelude::*;
 use sha1::{Digest, Sha1};
 use tracing::debug;
@@ -50,6 +52,8 @@ pub struct CacheManager {
     root: PathBuf,
     binaries_dir: PathBuf,
     metadata_dir: PathBuf,
+    /// In-memory cache for recently accessed metadata
+    metadata_cache: Arc<RwLock<HashMap<String, Arc<CacheMetadata>>>>,
 }
 
 impl CacheManager {
@@ -65,6 +69,7 @@ impl CacheManager {
             root,
             binaries_dir: binaries,
             metadata_dir: metadata,
+            metadata_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -128,6 +133,22 @@ impl CacheManager {
     }
 
     pub fn lookup(&self, key: &CacheKey) -> Result<Option<CacheEntry>> {
+        // Check in-memory cache first
+        {
+            let cache = self.metadata_cache.read();
+            if let Some(metadata) = cache.get(key.as_str()) {
+                let binary_path = metadata.binary_path.clone();
+                if binary_path.exists() {
+                    return Ok(Some(CacheEntry {
+                        key: key.clone(),
+                        metadata: (**metadata).clone(),
+                        binary_path,
+                    }));
+                }
+            }
+        }
+
+        // Fall back to disk
         let metadata_path = self.metadata_path(key);
         if !metadata_path.exists() {
             return Ok(None);
@@ -141,6 +162,12 @@ impl CacheManager {
             return Ok(None);
         }
 
+        // Store in memory cache for future lookups
+        {
+            let mut cache = self.metadata_cache.write();
+            cache.insert(key.as_str().to_string(), Arc::new(metadata.clone()));
+        }
+
         Ok(Some(CacheEntry {
             key: key.clone(),
             metadata,
@@ -150,7 +177,13 @@ impl CacheManager {
 
     pub fn store(&self, metadata: &CacheMetadata) -> Result<()> {
         let metadata_path = self.metadata_path(&CacheKey(Arc::new(metadata.key.clone())));
-        metadata.write_to_yaml(&metadata_path)
+        metadata.write_to_yaml(&metadata_path)?;
+
+        // Also update in-memory cache
+        let mut cache = self.metadata_cache.write();
+        cache.insert(metadata.key.clone(), Arc::new(metadata.clone()));
+
+        Ok(())
     }
 }
 

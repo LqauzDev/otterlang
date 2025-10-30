@@ -7,6 +7,22 @@ impl Program {
     pub fn new(statements: Vec<Statement>) -> Self {
         Self { statements }
     }
+
+    /// Get all function definitions in the program
+    pub fn functions(&self) -> impl Iterator<Item = &Function> {
+        self.statements.iter().filter_map(|stmt| {
+            if let Statement::Function(func) = stmt {
+                Some(func)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Count the total number of statements recursively
+    pub fn statement_count(&self) -> usize {
+        self.statements.iter().map(|s| s.recursive_count()).sum()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -18,7 +34,12 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(name: impl Into<String>, params: Vec<Param>, ret_ty: Option<String>, body: Block) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        params: Vec<Param>,
+        ret_ty: Option<String>,
+        body: Block,
+    ) -> Self {
         Self {
             name: name.into(),
             params,
@@ -57,8 +78,14 @@ impl Block {
 #[derive(Debug, Clone)]
 pub enum Statement {
     // Variable declarations and assignments
-    Let { name: String, expr: Expr },
-    Assignment { name: String, expr: Expr },
+    Let {
+        name: String,
+        expr: Expr,
+    },
+    Assignment {
+        name: String,
+        expr: Expr,
+    },
 
     // Control flow
     If {
@@ -94,6 +121,63 @@ pub enum Statement {
 
     // Blocks (for grouping)
     Block(Block),
+}
+
+impl Statement {
+    /// Recursively count statements
+    pub fn recursive_count(&self) -> usize {
+        match self {
+            Statement::Let { .. }
+            | Statement::Assignment { .. }
+            | Statement::Break
+            | Statement::Continue
+            | Statement::Return(_)
+            | Statement::Expr(_)
+            | Statement::Use { .. } => 1,
+
+            Statement::If {
+                then_block,
+                elif_blocks,
+                else_block,
+                ..
+            } => {
+                let mut count = 1;
+                count += then_block.recursive_count();
+                for (_, block) in elif_blocks {
+                    count += block.recursive_count();
+                }
+                if let Some(block) = else_block {
+                    count += block.recursive_count();
+                }
+                count
+            }
+            Statement::For { body, .. } | Statement::While { body, .. } => {
+                1 + body.recursive_count()
+            }
+            Statement::Function(func) => 1 + func.body.recursive_count(),
+            Statement::Block(block) => block.recursive_count(),
+        }
+    }
+
+    /// Check if statement is pure (has no side effects)
+    pub fn is_pure(&self) -> bool {
+        matches!(
+            self,
+            Statement::Let { .. } | Statement::Break | Statement::Continue
+        )
+    }
+}
+
+impl Block {
+    /// Recursively count statements
+    pub fn recursive_count(&self) -> usize {
+        self.statements.iter().map(|s| s.recursive_count()).sum()
+    }
+
+    /// Check if block is empty
+    pub fn is_empty(&self) -> bool {
+        self.statements.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

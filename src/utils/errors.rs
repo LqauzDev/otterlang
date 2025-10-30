@@ -5,6 +5,8 @@ use ariadne::{Color, Label, Report, ReportKind, Source};
 pub enum DiagnosticSeverity {
     Error,
     Warning,
+    Info,
+    Hint,
 }
 
 #[derive(Clone)]
@@ -50,7 +52,28 @@ impl Diagnostic {
         match self.severity {
             DiagnosticSeverity::Error => ReportKind::Error,
             DiagnosticSeverity::Warning => ReportKind::Warning,
+            DiagnosticSeverity::Info | DiagnosticSeverity::Hint => ReportKind::Advice,
         }
+    }
+
+    /// Create an info diagnostic
+    pub fn info(source_id: impl Into<String>, span: Span, message: impl Into<String>) -> Self {
+        Self::new(DiagnosticSeverity::Info, source_id, span, message)
+    }
+
+    /// Create a hint diagnostic
+    pub fn hint(source_id: impl Into<String>, span: Span, message: impl Into<String>) -> Self {
+        Self::new(DiagnosticSeverity::Hint, source_id, span, message)
+    }
+
+    /// Create an error diagnostic
+    pub fn error(source_id: impl Into<String>, span: Span, message: impl Into<String>) -> Self {
+        Self::new(DiagnosticSeverity::Error, source_id, span, message)
+    }
+
+    /// Create a warning diagnostic
+    pub fn warning(source_id: impl Into<String>, span: Span, message: impl Into<String>) -> Self {
+        Self::new(DiagnosticSeverity::Warning, source_id, span, message)
     }
 }
 
@@ -59,6 +82,8 @@ pub fn emit_diagnostics(diagnostics: &[Diagnostic], source: &str) {
         let color = match diagnostic.severity {
             DiagnosticSeverity::Error => Color::Red,
             DiagnosticSeverity::Warning => Color::Yellow,
+            DiagnosticSeverity::Info => Color::Blue,
+            DiagnosticSeverity::Hint => Color::Cyan,
         };
 
         let span: std::ops::Range<usize> = diagnostic.span().into();
@@ -78,4 +103,9 @@ pub fn emit_diagnostics(diagnostics: &[Diagnostic], source: &str) {
 
         let _ = report.print((diagnostic.source_id().to_string(), Source::from(source)));
     }
+}
+
+/// Emit a single diagnostic
+pub fn emit_diagnostic(diagnostic: &Diagnostic, source: &str) {
+    emit_diagnostics(&[diagnostic.clone()], source);
 }

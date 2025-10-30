@@ -1,0 +1,2 @@
+fn main():
+    print("🦦 Hello World! π ≈ 3.14159")
