@@ -14,7 +14,7 @@ double calculate_pi(int iterations) {
 }
 
 int main() {
-    int iterations = 10000000;
+    int iterations = 100000000;
     
     clock_t start = clock();
     double pi = calculate_pi(iterations);

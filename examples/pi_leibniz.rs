@@ -13,7 +13,7 @@ fn calculate_pi(iterations: usize) -> f64 {
 }
 
 fn main() {
-    let iterations = 10_000_000;
+    let iterations = 100_000_000;
     
     let start = Instant::now();
     let pi = calculate_pi(iterations);

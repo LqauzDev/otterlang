@@ -6,7 +6,7 @@
 set -e
 
 echo "=== Benchmarking Leibniz Formula for π ==="
-echo "Calculating π with 10,000,000 iterations"
+echo "Calculating π with 100,000,000 iterations"
 echo ""
 
 # Colors
