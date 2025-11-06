@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintainers - BloodyHell Industries INC</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <style>
+        .maintainers-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .maintainers-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+        
+        .maintainers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        .maintainer-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .maintainer-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .maintainer-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: #666;
+            overflow: hidden;
+        }
+        
+        .maintainer-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .maintainer-name {
+            color: #e94560;
+            margin: 0.5rem 0;
+        }
+        
+        .maintainer-role {
+            color: #666;
+            font-style: italic;
+            margin-bottom: 1rem;
+        }
+        
+        .maintainer-bio {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+        
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .social-link {
+            color: #666;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .social-link:hover {
+            color: #e94560;
+        }
+        
+        .project-lead {
+            border: 2px solid #e94560;
+        }
+        
+        .core-maintainer {
+            border: 2px solid #3a86ff;
+        }
+        
+        .maintainer {
+            border: 2px solid #4cc9f0;
+        }
+        
+        .contributor {
+            border: 2px solid #a5a5a5;
+        }
+        
+        .team-section {
+            margin-bottom: 4rem;
+        }
+        
+        .section-title {
+            text-align: center;
+            margin: 3rem 0 2rem;
+            color: #333;
+            position: relative;
+            padding-bottom: 1rem;
+        }
+        
+        .section-title:after {
+            content: '';
+            display: block;
+            width: 80px;
+            height: 3px;
+            background: #e94560;
+            margin: 0.5rem auto 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div id="header">
+        <div class="container">
+            <div class="logo-section">
+                <img src="images/company-logo.png" alt="BloodyHell Industries INC Logo" class="company-logo">
+                <div class="logo-text">
+                    <h1><a href="index.html">BloodyHell Industries INC</a></h1>
+                    <p>Open Source Software Since 2007</p>
+                </div>
+            </div>
+            <div class="nav">
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="index.html#about">About</a></li>
+                    <li><a href="index.html#projects">Projects</a></li>
+                    <li><a href="maintainers.html" class="active">Maintainers</a></li>
+                    <li><a href="index.html#community">Community</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Maintainers Header -->
+    <header class="maintainers-header">
+        <div class="container">
+            <h1>Our Maintainers</h1>
+            <p class="lead">The talented individuals who keep our projects running smoothly</p>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="maintainers-container">
+        <section class="team-section">
+            <h2 class="section-title">Project Leadership</h2>
+            <div class="maintainers-grid">
+                <!-- Project Lead 1 -->
+                <div class="maintainer-card project-lead">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=PacHashs&background=e94560&color=fff" alt="PacHashs">
+                    </div>
+                    <h3 class="maintainer-name">PacHashs</h3>
+                    <p class="maintainer-role">Project Lead & Core Developer</p>
+                    <p class="maintainer-bio">PacHashs is a seasoned systems programmer with over a decade of experience in low-level development. They lead the BloodHorn Bootloader project with a focus on security and performance.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/PacHashs" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                        <a href="https://twitter.com/PacHashs" class="social-link" target="_blank" rel="noopener noreferrer">Twitter</a>
+                    </div>
+                </div>
+
+                <!-- Project Lead 2 -->
+                <div class="maintainer-card project-lead">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=LinoxGuy&background=3a86ff&color=fff" alt="LinoxGuy">
+                    </div>
+                    <h3 class="maintainer-name">LinoxGuy</h3>
+                    <p class="maintainer-role">Co-Founder & Core Developer</p>
+                    <p class="maintainer-bio">Founder of BloodyHell Industries, LinoxGuy brings extensive experience in system architecture and open source development. He oversees the technical direction of all projects.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/LinoxGuy" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                        <a href="https://twitter.com/LinoxGuy" class="social-link" target="_blank" rel="noopener noreferrer">Twitter</a>
+                    </div>
+                </div>
+
+                <!-- Project Lead 3 -->
+                <div class="maintainer-card project-lead">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=UnpopularOpinion&background=e94560&color=fff" alt="UnpopularOpinion">
+                    </div>
+                    <h3 class="maintainer-name">UnpopularOpinion</h3>
+                    <p class="maintainer-role">Security Lead & Core Developer</p>
+                    <p class="maintainer-bio">Security researcher and reverse engineer specializing in bootloader security and trusted computing. Ensures BloodHorn meets the highest security standards.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/UnpopularOpinion" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                        <a href="https://twitter.com/UnpopOpinion" class="social-link" target="_blank" rel="noopener noreferrer">Twitter</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="team-section">
+            <h2 class="section-title">Core Maintainers</h2>
+            <div class="maintainers-grid">
+                <!-- Core Maintainer 1 -->
+                <div class="maintainer-card core-maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=Alex+Chen&background=3a86ff&color=fff" alt="Alex Chen">
+                    </div>
+                    <h3 class="maintainer-name">Alex Chen</h3>
+                    <p class="maintainer-role">Core Developer</p>
+                    <p class="maintainer-bio">Firmware engineer with expertise in UEFI and Coreboot. Maintains the x86 and ARM64 ports of BloodHorn Bootloader.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/alexchen" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+
+                <!-- Core Maintainer 2 -->
+                <div class="maintainer-card core-maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=Maria+Garcia&background=3a86ff&color=fff" alt="Maria Garcia">
+                    </div>
+                    <h3 class="maintainer-name">Maria Garcia</h3>
+                    <p class="maintainer-role">Core Developer</p>
+                    <p class="maintainer-bio">Embedded systems specialist focusing on RISC-V architecture and secure boot implementations.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/mariagarcia" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+
+                <!-- Core Maintainer 3 -->
+                <div class="maintainer-card core-maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=James+Wilson&background=3a86ff&color=fff" alt="James Wilson">
+                    </div>
+                    <h3 class="maintainer-name">James Wilson</h3>
+                    <p class="maintainer-role">Build System Maintainer</p>
+                    <p class="maintainer-bio">Build and release engineer ensuring smooth cross-platform compilation and packaging.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/jwilson" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="team-section">
+            <h2 class="section-title">Maintainers</h2>
+            <div class="maintainers-grid">
+                <!-- Maintainer 1 -->
+                <div class="maintainer-card maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=Sarah+Kim&background=4cc9f0&color=fff" alt="Sarah Kim">
+                    </div>
+                    <h3 class="maintainer-name">Sarah Kim</h3>
+                    <p class="maintainer-role">Documentation Lead</p>
+                    <p class="maintainer-bio">Technical writer and community educator focusing on making BloodHorn accessible to all users.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/sarahk" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+
+                <!-- Maintainer 2 -->
+                <div class="maintainer-card maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=David+Zhang&background=4cc9f0&color=fff" alt="David Zhang">
+                    </div>
+                    <h3 class="maintainer-name">David Zhang</h3>
+                    <p class="maintainer-role">Testing Lead</p>
+                    <p class="maintainer-bio">QA engineer ensuring the reliability and stability of BloodHorn across all supported platforms.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/davidz" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+
+                <!-- Maintainer 3 -->
+                <div class="maintainer-card maintainer">
+                    <div class="maintainer-avatar">
+                        <img src="https://ui-avatars.com/api/?name=Emma+Martinez&background=4cc9f0&color=fff" alt="Emma Martinez">
+                    </div>
+                    <h3 class="maintainer-name">Emma Martinez</h3>
+                    <p class="maintainer-role">Community Manager</p>
+                    <p class="maintainer-bio">Builds and nurtures the BloodHorn community, organizing events and managing communications.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/emmam" class="social-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <div id="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>BloodyHell Industries INC</h3>
+                    <p>Open Source Software Since 2007</p>
+                    <p>"Everyone deserves a software"</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="bloodhorn-bootloader.html">BloodHorn Bootloader</a></li>
+                        <li><a href="maintainers.html">Maintainers</a></li>
+                        <li><a href="index.html#community">Community</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Connect</h3>
+                    <ul>
+                        <li><a href="https://github.com/BloodyHell-Industries" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                        <li><a href="https://matrix.to/#/#bloodyhell:matrix.org" target="_blank" rel="noopener noreferrer">Matrix</a></li>
+                        <li><a href="https://twitter.com/BloodyHellInc" target="_blank" rel="noopener noreferrer">Twitter</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2007-2025 BloodyHell Industries INC. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

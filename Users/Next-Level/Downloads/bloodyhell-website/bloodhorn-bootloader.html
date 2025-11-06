@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BloodHorn Bootloader - BloodyHell Industries INC</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <style>
+        .project-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .project-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        .feature-card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .feature-card h3 {
+            color: #e94560;
+            margin-top: 0;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin: 2rem 0;
+        }
+        
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background-color: #e94560;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: #16213e;
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div id="header">
+        <div class="container">
+            <div class="logo-section">
+                <img src="images/company-logo.png" alt="BloodyHell Industries INC Logo" class="company-logo">
+                <div class="logo-text">
+                    <h1><a href="index.html">BloodyHell Industries INC</a></h1>
+                    <p>Open Source Software Since 2007</p>
+                </div>
+            </div>
+            <div class="nav">
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="index.html#about">About</a></li>
+                    <li><a href="index.html#projects">Projects</a></li>
+                    <li><a href="maintainers.html">Maintainers</a></li>
+                    <li><a href="index.html#community">Community</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Header -->
+    <header class="project-header">
+        <div class="project-content">
+            <h1>BloodHorn Bootloader</h1>
+            <p class="lead">A multi-architectural bootloader and boot manager with advanced security features</p>
+            <div class="cta-buttons">
+                <a href="#features" class="btn btn-primary">View Features</a>
+                <a href="#get-started" class="btn btn-secondary">Get Started</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="project-content">
+        <section id="overview" class="feature-card">
+            <h2>Overview</h2>
+            <p>BloodHorn Bootloader is a cutting-edge, lightweight bootloader and boot manager that supports multiple architectures and integrates seamlessly with EDK2 and Coreboot payloads. Designed with security and performance in mind, BloodHorn provides a robust foundation for modern computing environments.</p>
+        </section>
+
+        <section id="features" class="feature-card">
+            <h2>Key Features</h2>
+            <div class="features-grid">
+                <div class="feature">
+                    <h3>Multi-Architecture Support</h3>
+                    <p>Supports x86, ARM, RISC-V, and more, with a unified configuration system across all platforms.</p>
+                </div>
+                
+                <div class="feature">
+                    <h3>Advanced Security</h3>
+                    <p>Implements secure boot, TPM integration, and measured boot capabilities to ensure system integrity.</p>
+                </div>
+                
+                <div class="feature">
+                    <h3>Lightweight & Fast</h3>
+                    <p>Optimized for minimal footprint and maximum performance, even on resource-constrained devices.</p>
+                </div>
+                
+                <div class="feature">
+                    <h3>EDK2 & Coreboot Integration</h3>
+                    <p>Seamlessly works with EDK2 and can be used as a Coreboot payload for maximum flexibility.</p>
+                </div>
+                
+                <div class="feature">
+                    <h3>Modular Design</h3>
+                    <p>Highly modular architecture allows for easy customization and extension.</p>
+                </div>
+                
+                <div class="feature">
+                    <h3>User-Friendly Interface</h3>
+                    <p>Intuitive text and graphical interfaces for both end-users and system administrators.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="get-started" class="feature-card">
+            <h2>Get Started with BloodHorn</h2>
+            <p>Ready to explore BloodHorn Bootloader? Here's how you can get involved:</p>
+            
+            <div class="cta-buttons" style="margin-top: 2rem;">
+                <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn" class="btn btn-primary">View on Codeberg</a>
+                <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn/src/branch/main/docs" class="btn btn-secondary">Documentation</a>
+            </div>
+            
+            <div style="margin-top: 2rem;">
+                <h3>Key Resources</h3>
+                <ul>
+                    <li><strong>Source Code:</strong> <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn">Codeberg Repository</a></li>
+                    <li><strong>Documentation:</strong> <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn/src/branch/main/docs">Installation & Usage Guides</a></li>
+                    <li><strong>Issue Tracker:</strong> <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn/issues">Report Issues & Request Features</a></li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="community" class="feature-card">
+            <h2>Join Our Community</h2>
+            <p>BloodHorn Bootloader is developed in the open, and we welcome contributions from developers of all skill levels. Whether you want to report bugs, suggest features, or submit code, we'd love to have you on board!</p>
+            
+            <p>Join our community channels:</p>
+            <ul>
+                <li>Codeberg: <a href="https://codeberg.org/BloodyHell-Industries-INC/BloodHorn">BloodHorn Repository</a></li>
+                <li>Matrix: <a href="https://matrix.to/#/#bloodhorn:matrix.org">#bloodhorn:matrix.org</a></li>
+                <li>IRC: <a href="ircs://irc.libera.chat:6697/#bloodhorn">#bloodhorn on Libera.Chat</a></li>
+            </ul>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <div id="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>BloodyHell Industries INC</h3>
+                    <p>Open Source Software Since 2007</p>
+                    <p>"Everyone deserves a software"</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="index.html#projects">Projects</a></li>
+                        <li><a href="maintainers.html">Maintainers</a></li>
+                        <li><a href="index.html#community">Community</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Connect</h3>
+                    <ul>
+                        <li><a href="https://github.com/BloodyHell-Industries">GitHub</a></li>
+                        <li><a href="https://matrix.to/#/#bloodyhell:matrix.org">Matrix</a></li>
+                        <li><a href="https://twitter.com/BloodyHellInc">Twitter</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2007-2025 BloodyHell Industries INC. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
