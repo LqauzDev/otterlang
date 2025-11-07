@@ -1,6 +1,3 @@
-# 🦦 OtterLang Task Module
-# Thin wrappers around the runtime task APIs exposed via FFI.
-
 fn spawn_task(func) -> TaskHandle:
     return task.spawn(func)
 

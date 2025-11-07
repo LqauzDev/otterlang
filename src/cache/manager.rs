@@ -36,12 +36,20 @@ impl CacheManager {
         self.entries.clear();
     }
 
-    pub fn fingerprint(&self, _inputs: &super::CompilationInputs, _options: &super::CacheBuildOptions, _version: &str) -> String {
+    pub fn fingerprint(
+        &self,
+        _inputs: &super::CompilationInputs,
+        _options: &super::CacheBuildOptions,
+        _version: &str,
+    ) -> String {
         // Simple fingerprinting - in a real implementation this would hash the inputs
-        format!("cache_key_{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs())
+        format!(
+            "cache_key_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        )
     }
 
     pub fn lookup(&self, key: &str) -> Option<CacheEntry> {
@@ -52,7 +60,10 @@ impl CacheManager {
         self.entries.get(key).map(|entry| entry.binary_path.clone())
     }
 
-    pub fn store(&mut self, metadata: &super::metadata::CacheMetadata) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn store(
+        &mut self,
+        metadata: &super::metadata::CacheMetadata,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let entry = CacheEntry {
             path: metadata.cache_path.clone(),
             last_modified: metadata.created_at,

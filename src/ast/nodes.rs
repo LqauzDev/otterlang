@@ -187,7 +187,7 @@ impl Statement {
             | Statement::Pass
             | Statement::Return(_)
             | Statement::Expr(_)
-            |             Statement::Use { .. }
+            | Statement::Use { .. }
             | Statement::Struct { .. }
             | Statement::TypeAlias { .. }
             | Statement::Raise(_) => 1,

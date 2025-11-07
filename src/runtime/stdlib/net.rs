@@ -1,16 +1,15 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use once_cell::sync::Lazy;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::runtime::symbol_registry::{FfiFunction, FfiSignature, FfiType, SymbolRegistry};
-
-// ============================================================================
-// Networking - TCP and HTTP
-// Simplified implementation using std::net
-// ============================================================================
 
 type HandleId = u64;
 static NEXT_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
@@ -19,35 +18,131 @@ fn next_handle_id() -> HandleId {
     NEXT_HANDLE_ID.fetch_add(1, Ordering::SeqCst)
 }
 
-// Connection handle
 struct Connection {
-    _id: HandleId,
-    // For now, just store address
-    // Full implementation would maintain actual TCP connections
-    _address: String,
+    stream: Mutex<TcpStream>,
 }
 
-// Listener handle
-struct Listener {
-    _id: HandleId,
-    _address: String,
-}
-
-// HTTP Response
 struct HttpResponse {
     status: i32,
     body: String,
-    _headers: String,
 }
 
-static CONNECTIONS: Lazy<RwLock<std::collections::HashMap<HandleId, Connection>>> =
-    Lazy::new(|| RwLock::new(std::collections::HashMap::new()));
+static CONNECTIONS: Lazy<RwLock<HashMap<HandleId, Connection>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
-static LISTENERS: Lazy<RwLock<std::collections::HashMap<HandleId, Listener>>> =
-    Lazy::new(|| RwLock::new(std::collections::HashMap::new()));
+static LISTENERS: Lazy<RwLock<HashMap<HandleId, Mutex<TcpListener>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
-static HTTP_RESPONSES: Lazy<RwLock<std::collections::HashMap<HandleId, HttpResponse>>> =
-    Lazy::new(|| RwLock::new(std::collections::HashMap::new()));
+static HTTP_RESPONSES: Lazy<RwLock<HashMap<HandleId, HttpResponse>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+fn parse_http_url(url: &str) -> Option<(String, u16, String)> {
+    let trimmed = url.trim();
+    let rest = trimmed.strip_prefix("http://")?;
+    let (authority, path_part) = match rest.split_once('/') {
+        Some((host_port, path)) => (host_port, format!("/{}", path)),
+        None => (rest, "/".to_string()),
+    };
+
+    if authority.is_empty() {
+        return None;
+    }
+
+    let mut host_split = authority.splitn(2, ':');
+    let host = host_split.next()?.to_string();
+    let port = host_split
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(80);
+
+    Some((host, port, path_part))
+}
+
+fn run_http_request(method: &str, url: &str, body: Option<&str>) -> HttpResponse {
+    let Some((host, port, path)) = parse_http_url(url) else {
+        return HttpResponse {
+            status: 400,
+            body: format!("unsupported url: {}", url),
+        };
+    };
+
+    match TcpStream::connect((host.as_str(), port)) {
+        Ok(mut stream) => {
+            let timeout = Some(Duration::from_secs(5));
+            let _ = stream.set_read_timeout(timeout);
+            let _ = stream.set_write_timeout(timeout);
+
+            let request = match body {
+                Some(payload) => format!(
+                    concat!(
+                        "{method} {path} HTTP/1.1\\r\\n",
+                        "Host: {host}\\r\\n",
+                        "Content-Length: {len}\\r\\n",
+                        "Connection: close\\r\\n",
+                        "Accept: */*\\r\\n",
+                        "\\r\\n",
+                        "{payload}"
+                    ),
+                    method = method,
+                    path = path,
+                    host = host,
+                    len = payload.as_bytes().len(),
+                    payload = payload
+                ),
+                None => format!(
+                    concat!(
+                        "{method} {path} HTTP/1.1\\r\\n",
+                        "Host: {host}\\r\\n",
+                        "Connection: close\\r\\n",
+                        "Accept: */*\\r\\n",
+                        "\\r\\n"
+                    ),
+                    method = method,
+                    path = path,
+                    host = host
+                ),
+            };
+
+            if let Err(err) = stream.write_all(request.as_bytes()) {
+                return HttpResponse {
+                    status: 502,
+                    body: format!("request failed: {}", err),
+                };
+            }
+
+            let mut buffer = Vec::new();
+            match stream.read_to_end(&mut buffer) {
+                Ok(_) => {
+                    let response_text = String::from_utf8_lossy(&buffer);
+                    let mut sections = response_text.splitn(2, "\\r\\n\\r\\n");
+                    let header_block = sections.next().unwrap_or("");
+                    let body_block = sections.next().unwrap_or("");
+
+                    let mut header_lines = header_block.lines();
+                    let status_line = header_lines.next().unwrap_or("");
+                    let status = status_line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|code| code.parse::<i32>().ok())
+                        .unwrap_or(500);
+
+                    HttpResponse {
+                        status,
+                        body: body_block.to_string(),
+                    }
+                }
+                Err(err) => HttpResponse {
+                    status: 504,
+                    body: format!("response read failed: {}", err),
+                },
+            }
+        }
+        Err(err) => HttpResponse {
+            status: 503,
+            body: format!("connection failed: {}", err),
+        },
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn otter_std_net_listen(addr: *const c_char) -> u64 {
@@ -55,16 +150,18 @@ pub extern "C" fn otter_std_net_listen(addr: *const c_char) -> u64 {
         return 0;
     }
 
-    let address = unsafe { CStr::from_ptr(addr).to_str().unwrap_or("").to_string() };
-
-    let id = next_handle_id();
-    let listener = Listener {
-        _id: id,
-        _address: address,
+    let Ok(address) = (unsafe { CStr::from_ptr(addr).to_str() }) else {
+        return 0;
     };
 
-    LISTENERS.write().insert(id, listener);
-    id
+    match TcpListener::bind(address) {
+        Ok(listener) => {
+            let id = next_handle_id();
+            LISTENERS.write().insert(id, Mutex::new(listener));
+            id
+        }
+        Err(_) => 0,
+    }
 }
 
 #[no_mangle]
@@ -73,16 +170,24 @@ pub extern "C" fn otter_std_net_dial(addr: *const c_char) -> u64 {
         return 0;
     }
 
-    let address = unsafe { CStr::from_ptr(addr).to_str().unwrap_or("").to_string() };
-
-    let id = next_handle_id();
-    let conn = Connection {
-        _id: id,
-        _address: address,
+    let Ok(address) = (unsafe { CStr::from_ptr(addr).to_str() }) else {
+        return 0;
     };
 
-    CONNECTIONS.write().insert(id, conn);
-    id
+    match TcpStream::connect(address) {
+        Ok(stream) => {
+            let _ = stream.set_nonblocking(true);
+            let id = next_handle_id();
+            CONNECTIONS.write().insert(
+                id,
+                Connection {
+                    stream: Mutex::new(stream),
+                },
+            );
+            id
+        }
+        Err(_) => 0,
+    }
 }
 
 #[no_mangle]
@@ -91,13 +196,18 @@ pub extern "C" fn otter_std_net_send(conn: u64, data: *const c_char) -> i32 {
         return 0;
     }
 
-    let _data_str = unsafe { CStr::from_ptr(data).to_str().unwrap_or("").to_string() };
+    let Ok(message) = (unsafe { CStr::from_ptr(data).to_str() }) else {
+        return 0;
+    };
 
     let connections = CONNECTIONS.read();
-    if connections.contains_key(&conn) {
-        // In full implementation, would send data over TCP connection
-        // For now, just return success
-        1
+    if let Some(connection) = connections.get(&conn) {
+        let mut stream = connection.stream.lock();
+        if stream.write_all(message.as_bytes()).is_ok() && stream.flush().is_ok() {
+            1
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -106,15 +216,31 @@ pub extern "C" fn otter_std_net_send(conn: u64, data: *const c_char) -> i32 {
 #[no_mangle]
 pub extern "C" fn otter_std_net_recv(conn: u64) -> *mut c_char {
     let connections = CONNECTIONS.read();
-    if connections.contains_key(&conn) {
-        // In full implementation, would receive data from TCP connection
-        // For now, return empty string
-        CString::new("")
+    let Some(connection) = connections.get(&conn) else {
+        return std::ptr::null_mut();
+    };
+
+    let mut stream = connection.stream.lock();
+    let mut buffer = vec![0u8; 4096];
+    match stream.read(&mut buffer) {
+        Ok(0) => {
+            drop(stream);
+            drop(connections);
+            CONNECTIONS.write().remove(&conn);
+            std::ptr::null_mut()
+        }
+        Ok(n) => {
+            let text = String::from_utf8_lossy(&buffer[..n]).to_string();
+            CString::new(text)
+                .ok()
+                .map(CString::into_raw)
+                .unwrap_or(std::ptr::null_mut())
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => CString::new("")
             .ok()
             .map(CString::into_raw)
-            .unwrap_or(std::ptr::null_mut())
-    } else {
-        std::ptr::null_mut()
+            .unwrap_or(std::ptr::null_mut()),
+        Err(_) => std::ptr::null_mut(),
     }
 }
 
@@ -129,35 +255,12 @@ pub extern "C" fn otter_std_net_http_get(url: *const c_char) -> u64 {
         return 0;
     }
 
-    let url_str = unsafe { CStr::from_ptr(url).to_str().unwrap_or("").to_string() };
-
-    let id = next_handle_id();
-
-    // Simple HTTP GET using std::net (blocking)
-    // Full implementation would use reqwest or similar
-    let response = match std::net::TcpStream::connect(
-        &url_str
-            .replace("http://", "")
-            .replace("https://", "")
-            .split('/')
-            .next()
-            .unwrap_or(""),
-    ) {
-        Ok(_) => {
-            // Simplified - in real implementation would parse HTTP response
-            HttpResponse {
-                status: 200,
-                body: format!("Response from {}", url_str),
-                _headers: "Content-Type: text/plain".to_string(),
-            }
-        }
-        Err(_) => HttpResponse {
-            status: 500,
-            body: "Connection failed".to_string(),
-            _headers: String::new(),
-        },
+    let Ok(url_str) = (unsafe { CStr::from_ptr(url).to_str() }) else {
+        return 0;
     };
 
+    let id = next_handle_id();
+    let response = run_http_request("GET", url_str, None);
     HTTP_RESPONSES.write().insert(id, response);
     id
 }
@@ -168,23 +271,18 @@ pub extern "C" fn otter_std_net_http_post(url: *const c_char, body: *const c_cha
         return 0;
     }
 
-    let url_str = unsafe { CStr::from_ptr(url).to_str().unwrap_or("").to_string() };
+    let Ok(url_str) = (unsafe { CStr::from_ptr(url).to_str() }) else {
+        return 0;
+    };
 
     let body_str = if body.is_null() {
         String::new()
     } else {
-        unsafe { CStr::from_ptr(body).to_str().unwrap_or("").to_string() }
+        unsafe { CStr::from_ptr(body).to_string_lossy().into_owned() }
     };
 
     let id = next_handle_id();
-
-    // Simple HTTP POST (simplified)
-    let response = HttpResponse {
-        status: 200,
-        body: format!("POST response for {}: {}", url_str, body_str),
-        _headers: "Content-Type: text/plain".to_string(),
-    };
-
+    let response = run_http_request("POST", url_str, Some(&body_str));
     HTTP_RESPONSES.write().insert(id, response);
     id
 }
@@ -192,11 +290,10 @@ pub extern "C" fn otter_std_net_http_post(url: *const c_char, body: *const c_cha
 #[no_mangle]
 pub extern "C" fn otter_std_net_response_status(response: u64) -> i32 {
     let responses = HTTP_RESPONSES.read();
-    if let Some(resp) = responses.get(&response) {
-        resp.status
-    } else {
-        0
-    }
+    responses
+        .get(&response)
+        .map(|resp| resp.status)
+        .unwrap_or(0)
 }
 
 #[no_mangle]

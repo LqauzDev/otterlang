@@ -312,8 +312,11 @@ fn compile_pipeline(
     let expr_types = type_checker.into_expr_type_map();
 
     // Update inputs with module dependencies for accurate cache fingerprinting
-    inputs.imports = module_deps.iter().map(|p| p.display().to_string()).collect();
-      let cache_key = profiler.record_phase("Fingerprint (with modules)", || {
+    inputs.imports = module_deps
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    let cache_key = profiler.record_phase("Fingerprint (with modules)", || {
         cache_manager.fingerprint(&inputs, &cache_options, VERSION)
     });
 
@@ -332,9 +335,9 @@ fn compile_pipeline(
     }
 
     let codegen_options = settings.codegen_options();
-    let binary_path = cache_manager.binary_path(&cache_key).unwrap_or_else(|| {
-        PathBuf::from("./target/tmp_binary")
-    });
+    let binary_path = cache_manager
+        .binary_path(&cache_key)
+        .unwrap_or_else(|| PathBuf::from("./target/tmp_binary"));
 
     let artifact = profiler.record_phase("LLVM Codegen", || {
         build_executable(&program, &expr_types, &binary_path, &codegen_options)

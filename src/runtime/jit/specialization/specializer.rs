@@ -20,7 +20,10 @@ impl Specializer {
     }
 
     /// Get or create specialization key
-    pub fn get_specialization_key(&mut self, context: &CallSiteContext) -> Option<SpecializationKey> {
+    pub fn get_specialization_key(
+        &mut self,
+        context: &CallSiteContext,
+    ) -> Option<SpecializationKey> {
         if !self.can_specialize(context) {
             return None;
         }

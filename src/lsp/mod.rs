@@ -1,155 +1,89 @@
-//! Language Server Protocol (LSP) implementation for OtterLang
-//!
-//! Provides code completion, diagnostics, hover information, and more for IDE integration
+use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use tower_lsp::{jsonrpc::Result, lsp_types::*, LanguageServer, LspService};
+use tokio::sync::RwLock;
+use tower_lsp::jsonrpc::Result;
+use tower_lsp::lsp_types::*;
+use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+use crate::lexer::token::Span;
 use crate::lexer::{tokenize, LexerError};
-use crate::module::ModuleProcessor;
-use crate::parser::{parse, ParserError};
+use crate::parser::parse;
+use crate::runtime::symbol_registry::SymbolRegistry;
 use crate::typecheck::{TypeChecker, TypeError};
-use crate::utils::errors::Diagnostic;
+use crate::utils::errors::{
+    Diagnostic as OtterDiagnostic, DiagnosticSeverity as OtterDiagSeverity,
+};
 
-/// LSP server state
-pub struct OtterLangServer {
-    workspace_root: Option<PathBuf>,
-    documents: HashMap<PathBuf, String>,
-    diagnostics: HashMap<PathBuf, Vec<Diagnostic>>,
+#[derive(Default, Debug)]
+struct DocumentStore {
+    documents: HashMap<Url, String>,
 }
 
-impl OtterLangServer {
-    pub fn new() -> Self {
+#[derive(Debug)]
+pub struct Backend {
+    client: Client,
+    state: Arc<RwLock<DocumentStore>>,
+}
+
+impl Backend {
+    pub fn new(client: Client) -> Self {
         Self {
-            workspace_root: None,
-            documents: HashMap::new(),
-            diagnostics: HashMap::new(),
+            client,
+            state: Arc::new(RwLock::new(DocumentStore::default())),
         }
     }
 
-    fn update_diagnostics(&mut self, uri: &Url) {
-        if let Some(path) = self.uri_to_path(uri) {
-            if let Some(content) = self.documents.get(&path) {
-                let diagnostics = self.analyze_document(&path, content);
-                self.diagnostics.insert(path, diagnostics);
-            }
+    async fn upsert_document(&self, uri: Url, text: String) {
+        {
+            let mut state = self.state.write().await;
+            state.documents.insert(uri.clone(), text);
         }
+        self.publish_diagnostics(uri).await;
     }
 
-    fn analyze_document(&self, path: &Path, content: &str) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
-
-        // Lexical analysis
-        match tokenize(content) {
-            Ok(tokens) => {
-                // Parse
-                match parse(&tokens) {
-                    Ok(program) => {
-                        // Type check
-                        let mut checker = TypeChecker::new()
-                            .with_registry(crate::runtime::symbol_registry::SymbolRegistry::global());
-                        if let Err(errors) = checker.check_program(&program) {
-                            for error in errors {
-                                diagnostics.push(Diagnostic {
-                                    message: error.message,
-                                    hint: error.hint,
-                                    help: error.help,
-                                    file: path.to_path_buf(),
-                                    line: error.line,
-                                    column: error.column,
-                                });
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        diagnostics.push(Diagnostic {
-                            message: format!("Parse error: {}", err),
-                            hint: None,
-                            help: None,
-                            file: path.to_path_buf(),
-                            line: 0,
-                            column: 0,
-                        });
-                    }
-                }
-            }
-            Err(err) => {
-                diagnostics.push(Diagnostic {
-                    message: format!("Lexical error: {}", err),
-                    hint: None,
-                    help: None,
-                    file: path.to_path_buf(),
-                    line: 0,
-                    column: 0,
-                });
-            }
+    async fn remove_document(&self, uri: &Url) {
+        {
+            let mut state = self.state.write().await;
+            state.documents.remove(uri);
         }
-
-        diagnostics
+        let _ = self
+            .client
+            .publish_diagnostics(uri.clone(), Vec::new(), None)
+            .await;
     }
 
-    fn uri_to_path(&self, uri: &Url) -> Option<PathBuf> {
-        uri.to_file_path().ok()
-    }
-
-    fn path_to_uri(&self, path: &Path) -> Option<Url> {
-        Url::from_file_path(path).ok()
-    }
-
-    fn diagnostic_to_lsp(&self, diag: &Diagnostic) -> lsp_types::Diagnostic {
-        let severity = lsp_types::DiagnosticSeverity::ERROR;
-        let message = if let Some(ref hint) = diag.hint {
-            format!("{}\nHint: {}", diag.message, hint)
-        } else {
-            diag.message.clone()
+    async fn publish_diagnostics(&self, uri: Url) {
+        let text = {
+            let state = self.state.read().await;
+            state.documents.get(&uri).cloned()
         };
 
-        lsp_types::Diagnostic {
-            range: Range {
-                start: Position {
-                    line: diag.line.saturating_sub(1) as u32,
-                    character: diag.column.saturating_sub(1) as u32,
-                },
-                end: Position {
-                    line: diag.line.saturating_sub(1) as u32,
-                    character: diag.column.saturating_sub(1) as u32,
-                },
-            },
-            severity: Some(severity),
-            code: None,
-            code_description: None,
-            source: Some("otterlang".to_string()),
-            message,
-            related_information: None,
-            tags: None,
-            data: None,
+        if let Some(text) = text {
+            let diagnostics = compute_lsp_diagnostics(&text);
+            let _ = self
+                .client
+                .publish_diagnostics(uri, diagnostics, None)
+                .await;
         }
+    }
+
+    async fn document_text(&self, uri: &Url) -> Option<String> {
+        let state = self.state.read().await;
+        state.documents.get(uri).cloned()
     }
 }
 
 #[tower_lsp::async_trait]
-impl LanguageServer for OtterLangServer {
-    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+impl LanguageServer for Backend {
+    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
-            server_info: Some(ServerInfo {
-                name: "otterlang-lsp".to_string(),
-                version: Some(crate::version::VERSION.to_string()),
-            }),
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
-                completion_provider: Some(CompletionOptions {
-                    resolve_provider: Some(false),
-                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
-                    all_commit_characters: None,
-                    work_done_progress_options: Default::default(),
-                }),
-                definition_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
-                document_symbol_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions::default()),
                 ..Default::default()
             },
             ..Default::default()
@@ -157,94 +91,226 @@ impl LanguageServer for OtterLangServer {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        // Server is ready
+        self.client
+            .log_message(MessageType::INFO, "otterlang-lsp initialized")
+            .await;
+    }
+
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.upsert_document(params.text_document.uri, params.text_document.text)
+            .await;
+    }
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        if let Some(change) = params.content_changes.into_iter().last() {
+            self.upsert_document(params.text_document.uri, change.text)
+                .await;
+        }
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.remove_document(&params.text_document.uri).await;
     }
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
 
-    async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {
-        // Handle workspace folder changes
-    }
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let text = self.document_text(&uri).await.unwrap_or_default();
 
-    async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
-        // Handle configuration changes
-    }
+        let mut items = vec![
+            CompletionItem::new_simple("print".into(), "fn print(message: string)".into()),
+            CompletionItem::new_simple("len".into(), "fn len(value)".into()),
+            CompletionItem::new_simple("await".into(), "await expression".into()),
+        ];
 
-    async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
-        // Handle file changes
-    }
+        items.extend(
+            collect_identifiers(&text)
+                .into_iter()
+                .map(|ident| CompletionItem::new_simple(ident, "identifier".into())),
+        );
 
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        // Handle document open
-    }
-
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        // Handle document changes
-    }
-
-    async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        // Handle document save
-    }
-
-    async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        // Handle document close
+        Ok(Some(CompletionResponse::Array(items)))
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        // Provide hover information
-        Ok(None)
-    }
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
 
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        // Provide code completion
-        Ok(Some(CompletionResponse::Array(vec![
-            CompletionItem {
-                label: "print".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                detail: Some("fn print(message: string) -> unit".to_string()),
-                ..Default::default()
-            },
-            CompletionItem {
-                label: "len".to_string(),
-                kind: Some(CompletionItemKind::FUNCTION),
-                detail: Some("fn len(item: array | string) -> int".to_string()),
-                ..Default::default()
-            },
-        ])))
-    }
+        if let Some(text) = self.document_text(&uri).await {
+            if let Some(word) = word_at_position(&text, position) {
+                let contents = HoverContents::Scalar(MarkedString::String(format!(
+                    "symbol `{}` ({} chars)",
+                    word,
+                    word.len()
+                )));
+                return Ok(Some(Hover {
+                    contents,
+                    range: None,
+                }));
+            }
+        }
 
-    async fn goto_definition(
-        &self,
-        params: GotoDefinitionParams,
-    ) -> Result<Option<GotoDefinitionResponse>> {
-        // Provide go-to-definition
-        Ok(None)
-    }
-
-    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        // Provide references
-        Ok(None)
-    }
-
-    async fn document_symbol(
-        &self,
-        params: DocumentSymbolParams,
-    ) -> Result<Option<Vec<DocumentSymbol>>> {
-        // Provide document symbols
         Ok(None)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Run a standard I/O LSP server using the backend above.
+pub async fn run_stdio_server() {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let (service, socket) = LspService::new(|client| Backend::new(client));
+    Server::new(stdin, stdout, socket).serve(service).await;
+}
 
-    #[test]
-    fn test_server_creation() {
-        let server = OtterLangServer::new();
-        assert!(server.documents.is_empty());
+fn compute_lsp_diagnostics(text: &str) -> Vec<Diagnostic> {
+    let source_id = "lsp";
+    match tokenize(text) {
+        Ok(tokens) => match parse(&tokens) {
+            Ok(program) => {
+                let mut checker = TypeChecker::new().with_registry(SymbolRegistry::global());
+                if checker.check_program(&program).is_err() {
+                    checker.errors().iter().map(type_error_to_lsp).collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            Err(errors) => errors
+                .into_iter()
+                .map(|err| otter_diag_to_lsp(&err.to_diagnostic(source_id), text))
+                .collect(),
+        },
+        Err(errors) => errors
+            .into_iter()
+            .map(|err| otter_diag_to_lsp(&lexer_error_to_diag(source_id, &err), text))
+            .collect(),
     }
 }
 
+fn word_at_position(text: &str, position: Position) -> Option<String> {
+    let line = text.lines().nth(position.line as usize)?;
+    let chars: Vec<char> = line.chars().collect();
+    let mut idx = position.character as isize;
+    if idx as usize >= chars.len() {
+        idx = chars.len() as isize - 1;
+    }
+    while idx >= 0 && !chars[idx as usize].is_alphanumeric() && chars[idx as usize] != '_' {
+        idx -= 1;
+    }
+    if idx < 0 {
+        return None;
+    }
+    let start = {
+        let mut s = idx as usize;
+        while s > 0 && (chars[s - 1].is_alphanumeric() || chars[s - 1] == '_') {
+            s -= 1;
+        }
+        s
+    };
+    let mut end = idx as usize;
+    while end + 1 < chars.len() && (chars[end + 1].is_alphanumeric() || chars[end + 1] == '_') {
+        end += 1;
+    }
+    Some(chars[start..=end].iter().collect())
+}
+
+fn collect_identifiers(text: &str) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for token in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
+        if token.len() > 1 && token.chars().next().map_or(false, |c| c.is_alphabetic()) {
+            set.insert(token.to_string());
+        }
+    }
+    set.into_iter().collect()
+}
+
+fn lexer_error_to_diag(source: &str, err: &LexerError) -> OtterDiagnostic {
+    err.to_diagnostic(source)
+}
+
+fn type_error_to_lsp(err: &TypeError) -> Diagnostic {
+    let mut message = err.message.clone();
+    if let Some(hint) = &err.hint {
+        message.push_str(&format!("\nHint: {}", hint));
+    }
+    if let Some(help) = &err.help {
+        message.push_str(&format!("\nHelp: {}", help));
+    }
+
+    Diagnostic {
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: None,
+        code_description: None,
+        source: Some("otterlang".into()),
+        message,
+        related_information: None,
+        tags: None,
+        data: None,
+    }
+}
+
+fn otter_diag_to_lsp(diag: &OtterDiagnostic, text: &str) -> Diagnostic {
+    let range = span_to_range(diag.span(), text);
+    let mut message = diag.message().to_string();
+    if let Some(suggestion) = diag.suggestion() {
+        message.push_str(&format!("\nSuggestion: {}", suggestion));
+    }
+    if let Some(help) = diag.help() {
+        message.push_str(&format!("\nHelp: {}", help));
+    }
+
+    Diagnostic {
+        range,
+        severity: Some(match diag.severity() {
+            OtterDiagSeverity::Error => DiagnosticSeverity::ERROR,
+            OtterDiagSeverity::Warning => DiagnosticSeverity::WARNING,
+            OtterDiagSeverity::Info => DiagnosticSeverity::INFORMATION,
+            OtterDiagSeverity::Hint => DiagnosticSeverity::HINT,
+        }),
+        code: None,
+        code_description: None,
+        source: Some("otterlang".into()),
+        message,
+        related_information: None,
+        tags: None,
+        data: None,
+    }
+}
+
+fn span_to_range(span: Span, text: &str) -> Range {
+    Range {
+        start: offset_to_position(text, span.start()),
+        end: offset_to_position(text, span.end()),
+    }
+}
+
+fn offset_to_position(text: &str, offset: usize) -> Position {
+    let mut counted = 0usize;
+    let mut line = 0u32;
+    let mut character = 0u32;
+    for ch in text.chars() {
+        if counted >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            character = 0;
+        } else {
+            character += 1;
+        }
+        counted += ch.len_utf8();
+    }
+    Position { line, character }
+}

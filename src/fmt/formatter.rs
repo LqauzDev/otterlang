@@ -167,10 +167,7 @@ impl Formatter {
                 output.push_str(&self.format_block(body, indent + 1));
 
                 for handler in handlers {
-                    output.push_str(&format!(
-                        "{}except",
-                        self.indent(indent)
-                    ));
+                    output.push_str(&format!("{}except", self.indent(indent)));
 
                     if let Some(ty) = &handler.exception {
                         output.push_str(&format!(" {}", self.format_type(ty)));

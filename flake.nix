@@ -2,7 +2,7 @@
   description = "otterlang flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/release-23.11";
 
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
@@ -32,8 +32,9 @@
         devShells.default =
           with pkgs;
           let
-            llvm_15 = llvmPackages_15.llvm;
-            llvm_15_libs = llvmPackages_15.libllvm;
+            llvmPackages = pkgs.llvmPackages_15;
+            llvm_bin = llvmPackages.llvm;
+            llvm_libs = llvmPackages.libllvm;
             rustToolchain = rust-bin.nightly.latest.default.override {
               extensions = [
                 "rust-src"
@@ -44,8 +45,8 @@
           mkShell {
             buildInputs = [
               rustToolchain
-              llvm_15
-              llvm_15_libs
+              llvm_bin
+              llvm_libs
             ]
             ++ lib.optionals (hasInfix "linux" system) [
               mold
@@ -57,9 +58,9 @@
 
             RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
-            LLVM_SYS_150_PREFIX = "${llvm_15}";
-            LD_LIBRARY_PATH = lib.optionalString (hasInfix "linux" system) "${llvm_15}/lib:${llvm_15_libs}/lib";
-            LIBRARY_PATH = lib.optionalString (hasInfix "linux" system) "${llvm_15}/lib:${llvm_15_libs}/lib";
+            LLVM_SYS_150_PREFIX = "${llvm_bin}";
+            LD_LIBRARY_PATH = lib.optionalString (hasInfix "linux" system) "${llvm_bin}/lib:${llvm_libs}/lib";
+            LIBRARY_PATH = lib.optionalString (hasInfix "linux" system) "${llvm_bin}/lib:${llvm_libs}/lib";
 
             RUSTFLAGS =
               "-Zshare-generics=y" + lib.optionalString (hasInfix "linux" system) " -Clink-arg=-fuse-ld=mold";
@@ -70,4 +71,3 @@
       }
     );
 }
-

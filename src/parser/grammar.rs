@@ -825,13 +825,13 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         let except_handler = just(TokenKind::Except)
             .ignore_then(
                 // Optional type specification
-                type_parser().or_not()
+                type_parser().or_not(),
             )
             .then(
                 // Optional 'as name' clause
                 just(TokenKind::As)
                     .ignore_then(identifier_parser())
-                    .or_not()
+                    .or_not(),
             )
             .then_ignore(just(TokenKind::Colon))
             .then_ignore(newline.clone())
@@ -881,12 +881,14 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
                     )
                     .or_not(),
             )
-            .map(|((((_try, body), handlers), else_block), finally_block)| Statement::Try {
-                body,
-                handlers,
-                else_block: else_block.map(|(_else, block)| block),
-                finally_block: finally_block.map(|(_finally, block)| block),
-            });
+            .map(
+                |((((_try, body), handlers), else_block), finally_block)| Statement::Try {
+                    body,
+                    handlers,
+                    else_block: else_block.map(|(_else, block)| block),
+                    finally_block: finally_block.map(|(_finally, block)| block),
+                },
+            );
 
         let raise_stmt = just(TokenKind::Raise)
             .ignore_then(expr.clone().or_not())

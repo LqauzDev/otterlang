@@ -79,4 +79,3 @@ jobs:
           for example in examples/*.otter; do
             cargo run --release -- run "$example" || true
           done
-

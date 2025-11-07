@@ -43,4 +43,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Post-1.0 Releases** (planned):
 - `MAJOR.MINOR.PATCH` - Standard semantic versioning
 - Breaking changes will increment MAJOR version
-

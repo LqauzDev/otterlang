@@ -993,7 +993,9 @@ impl TypeChecker {
                                     field,
                                     object_type.display_name()
                                 ))
-                                .with_hint(format!("Only struct types and Error support member access")),
+                                .with_hint(format!(
+                                    "Only struct types and Error support member access"
+                                )),
                             );
                             Ok(TypeInfo::Error)
                         }

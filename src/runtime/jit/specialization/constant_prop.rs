@@ -8,11 +8,10 @@ impl ConstantPropagator {
     /// Analyze expression to extract constant values
     pub fn extract_constants(&self, expr: &Expr) -> Vec<Option<RuntimeConstant>> {
         match expr {
-            Expr::Call { args, .. } => {
-                args.iter()
-                    .map(|arg| self.extract_constant_from_expr(arg))
-                    .collect()
-            }
+            Expr::Call { args, .. } => args
+                .iter()
+                .map(|arg| self.extract_constant_from_expr(arg))
+                .collect(),
             _ => Vec::new(),
         }
     }

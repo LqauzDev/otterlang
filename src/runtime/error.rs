@@ -118,9 +118,7 @@ impl ErrorStack {
 
     /// Get the current error message as a string
     pub fn get_message() -> Option<String> {
-        Self::CURRENT_ERROR.with(|error| {
-            error.borrow().as_ref().map(|e| e.message.clone())
-        })
+        Self::CURRENT_ERROR.with(|error| error.borrow().as_ref().map(|e| e.message.clone()))
     }
 
     /// Check if there's currently an error
@@ -156,7 +154,8 @@ pub extern "C" fn otter_error_raise(message_ptr: *const i8, message_len: usize) 
     }
 
     // Convert C string to Rust string
-    let message_bytes = unsafe { std::slice::from_raw_parts(message_ptr as *const u8, message_len) };
+    let message_bytes =
+        unsafe { std::slice::from_raw_parts(message_ptr as *const u8, message_len) };
     let message = match std::str::from_utf8(message_bytes) {
         Ok(s) => s.to_string(),
         Err(_) => "Invalid UTF-8 error message".to_string(),
@@ -176,7 +175,8 @@ pub extern "C" fn otter_error_raise_with_code(
         return false;
     }
 
-    let message_bytes = unsafe { std::slice::from_raw_parts(message_ptr as *const u8, message_len) };
+    let message_bytes =
+        unsafe { std::slice::from_raw_parts(message_ptr as *const u8, message_len) };
     let message = match std::str::from_utf8(message_bytes) {
         Ok(s) => s.to_string(),
         Err(_) => "Invalid UTF-8 error message".to_string(),
@@ -192,21 +192,14 @@ pub extern "C" fn otter_error_clear() {
 }
 
 #[no_mangle]
-pub extern "C" fn otter_error_get_message(
-    buffer: *mut i8,
-    buffer_len: usize,
-) -> usize {
+pub extern "C" fn otter_error_get_message(buffer: *mut i8, buffer_len: usize) -> usize {
     if let Some(message) = ErrorStack::get_message() {
         let message_bytes = message.as_bytes();
         let copy_len = std::cmp::min(message_bytes.len(), buffer_len);
 
         if !buffer.is_null() && copy_len > 0 {
             unsafe {
-                std::ptr::copy_nonoverlapping(
-                    message_bytes.as_ptr(),
-                    buffer as *mut u8,
-                    copy_len,
-                );
+                std::ptr::copy_nonoverlapping(message_bytes.as_ptr(), buffer as *mut u8, copy_len);
             }
         }
 
@@ -264,9 +257,8 @@ mod tests {
         assert!(!ErrorStack::has_error());
     }
 
-
-#[test]
-fn test_error_context() {
+    #[test]
+    fn test_error_context() {
         ErrorStack::clear();
 
         // Push context (no error yet)

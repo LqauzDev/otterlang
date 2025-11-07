@@ -4,9 +4,9 @@ pub mod metadata;
 pub mod path;
 
 // Re-exports for convenience
-pub use manager::{CacheManager, CacheEntry};
+pub use manager::{CacheEntry, CacheManager};
 pub use metadata::CacheMetadata;
-pub use path::{cache_root, ensure_cache_dir, cache_key_for_file};
+pub use path::{cache_key_for_file, cache_root, ensure_cache_dir};
 
 /// Build options for caching
 #[derive(Debug, Clone)]

@@ -498,10 +498,8 @@ impl LexerState {
             match ch {
                 b'"' => {
                     let span = Span::new(start, self.offset + 1);
-                    self.tokens.push(Token::new(
-                        TokenKind::StringLiteral(result),
-                        span,
-                    ));
+                    self.tokens
+                        .push(Token::new(TokenKind::StringLiteral(result), span));
                     self.advance(1);
                     return;
                 }
@@ -559,10 +557,8 @@ impl LexerState {
                     // Check if this is the closing """
                     if self.peek_char(1) == Some(b'"') && self.peek_char(2) == Some(b'"') {
                         let span = Span::new(start, self.offset + 3);
-                        self.tokens.push(Token::new(
-                            TokenKind::StringLiteral(result),
-                            span,
-                        ));
+                        self.tokens
+                            .push(Token::new(TokenKind::StringLiteral(result), span));
                         self.advance(3); // Skip closing """
                         return;
                     } else {

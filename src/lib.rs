@@ -5,6 +5,7 @@ pub mod codegen;
 pub mod ffi;
 pub mod fmt;
 pub mod lexer;
+pub mod lsp;
 pub mod module;
 pub mod parser;
 pub mod repl;

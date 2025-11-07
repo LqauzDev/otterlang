@@ -992,16 +992,13 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
     fn type_from_ast(&self, ty: &Type) -> Result<OtterType> {
         match ty {
             Type::Simple(name) => self.type_from_name(name),
-            Type::Generic { base, args: _ } => {
-                // For now, we ignore generic arguments and just use the base type
-                // This is a temporary solution - proper generic type handling would require
-                // more complex type system changes
+            Type::Generic { base, args } => {
+                if !args.is_empty() {
+                    bail!("generic type `{base}` with arguments is not supported in codegen yet");
+                }
+
                 match base.as_str() {
-                    "Channel" => {
-                        // Channels are currently represented as i64 (pointer/handle)
-                        // In a full implementation, we'd need proper generic type handling
-                        Ok(OtterType::I64)
-                    }
+                    "Channel" => Ok(OtterType::I64),
                     "List" | "list" => Ok(OtterType::List),
                     "Dict" | "dict" => Ok(OtterType::Map),
                     _ => bail!("unknown generic type: {}", base),
@@ -1079,33 +1076,31 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                             );
                         }
                     }
-                    let coerced_value = eval
-                        .value
-                        .clone()
-                        .ok_or_else(|| anyhow!("missing value"))?;
+                    let coerced_value =
+                        eval.value.clone().ok_or_else(|| anyhow!("missing value"))?;
                     (existing_var.ptr, coerced_value)
                 } else {
                     // New variable - create alloca in entry block
                     let ty = self.basic_type(evaluated.ty)?;
-                    
+
                     let current_block = self.builder.get_insert_block();
-                    let entry_block = ctx.entry_block.ok_or_else(|| {
-                        anyhow!("entry block not set in function context")
-                    })?;
-                    
+                    let entry_block = ctx
+                        .entry_block
+                        .ok_or_else(|| anyhow!("entry block not set in function context"))?;
+
                     let first_inst = entry_block.get_first_instruction();
-                    
+
                     if let Some(inst) = first_inst {
                         self.builder.position_before(&inst);
                     } else {
                         self.builder.position_at_end(entry_block);
                     }
                     let alloca = self.builder.build_alloca(ty, &name);
-                    
+
                     if let Some(block) = current_block {
                         self.builder.position_at_end(block);
                     }
-                    
+
                     ctx.insert(
                         name.clone(),
                         Variable {
@@ -1137,7 +1132,6 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                 iterable,
                 body,
             } => {
-                // For now, we only support range expressions
                 if let Expr::Range { start, end } = iterable {
                     let start_val = self.eval_expr(start, ctx)?;
                     let end_val = self.eval_expr(end, ctx)?;
@@ -2216,19 +2210,29 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
         let (symbol_name, actual_args) = match callee {
             Expr::Identifier(name) => (Some(name.clone()), args.to_vec()),
             Expr::Member { object, field } => {
-                // Check if this is a method call (obj.method()) vs module function (module.func())
                 if let Expr::Identifier(module) = object.as_ref() {
-                    // Module function call
                     (Some(format!("{module}.{field}")), args.to_vec())
                 } else {
-                    // Method call: obj.method(args) - pass obj as first argument (self)
+                    let method_symbol = self
+                        .expr_type(object)
+                        .and_then(|ty| self.method_symbol_for_type(ty, field))
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "cannot resolve method `{field}` for expression of type `{}`",
+                                self.expr_type(object)
+                                    .map(|t| t.display_name())
+                                    .unwrap_or_else(|| "unknown".to_string())
+                            )
+                        })?;
+
+                    if self.symbol_registry.resolve(&method_symbol).is_none() {
+                        bail!("unresolved method `{method_symbol}`");
+                    }
+
                     let obj_expr = object.clone();
                     let mut method_args = vec![*obj_expr];
                     method_args.extend(args.iter().cloned());
-                    // For now, try to construct method name from object type
-                    // This will be enhanced when we have better type information
-                    // Try common patterns: if obj is a struct instance, use struct name
-                    (Some(format!("Struct.{}", field)), method_args)
+                    (Some(method_symbol), method_args)
                 }
             }
             _ => (None, args.to_vec()),
@@ -2748,6 +2752,21 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
         }
     }
 
+    fn method_symbol_for_type(&self, ty: &TypeInfo, field: &str) -> Option<String> {
+        match ty {
+            TypeInfo::Struct { name, .. } => Some(format!("{name}.{field}")),
+            TypeInfo::List(_) => Some(format!("list.{field}")),
+            TypeInfo::Dict { .. } => Some(format!("map.{field}")),
+            TypeInfo::Error => Some(format!("error.{field}")),
+            TypeInfo::Generic { base, .. } => match base.as_str() {
+                "List" => Some(format!("list.{field}")),
+                "Dict" | "Map" => Some(format!("map.{field}")),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn load_list_element(
         &mut self,
         element_ty: &TypeInfo,
@@ -3229,9 +3248,15 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
         _function: FunctionValue<'ctx>,
         _ctx: &mut FunctionContext<'ctx>,
     ) -> Result<EvaluatedValue<'ctx>> {
-        let full_name = format!("runtime.{}", name.trim_start_matches("otter_").trim_start_matches("error_"));
+        let full_name = format!(
+            "runtime.{}",
+            name.trim_start_matches("otter_")
+                .trim_start_matches("error_")
+        );
         let function = self.declare_symbol_function(&full_name)?;
-        let call = self.builder.build_call(function, args, &format!("call_{}", name));
+        let call = self
+            .builder
+            .build_call(function, args, &format!("call_{}", name));
         let value = call.try_as_basic_value().left().unwrap_or_else(|| {
             // If no return value, return unit
             self.context.const_struct(&[], false).into()
@@ -3253,12 +3278,12 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
         // Create a global string constant for the message
         let string_value = self.builder.build_global_string_ptr(message, "error_msg");
         let string_ptr = string_value.as_pointer_value();
-        let len_value = self.context.i64_type().const_int(message.len() as u64, false);
+        let len_value = self
+            .context
+            .i64_type()
+            .const_int(message.len() as u64, false);
 
-        let args = &[
-            string_ptr.into(),
-            len_value.into(),
-        ];
+        let args = &[string_ptr.into(), len_value.into()];
 
         self.call_runtime_function(name, args, function, ctx)
     }
