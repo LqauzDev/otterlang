@@ -115,9 +115,12 @@ jobs:
             Copy-Item $primaryLib $staticName
           }
 
-          $incDir = Join-Path $vcpkgRoot "installed\x64-windows\include"
+          $incDir = Join-Path $vcpkgRoot "installed\x64-windows\include\libxml2"
           if (-not (Test-Path (Join-Path $incDir "libxml\xmlversion.h"))) {
-            throw "libxml2 include headers not found in $incDir"
+            $incDir = Join-Path $vcpkgRoot "installed\x64-windows\include"
+            if (-not (Test-Path (Join-Path $incDir "libxml\xmlversion.h"))) {
+              throw "libxml2 include headers not found in $incDir"
+            }
           }
 
           Write-Host "libxml2 library path: $libDir"
