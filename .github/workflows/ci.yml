@@ -189,7 +189,7 @@ jobs:
         run: |
           cargo build --release
           find examples -name "*.ot" -type f | while read -r example; do
-            cargo run --release -- run "$example" || true
+            cargo run --release --bin otter -- run "$example" || true
           done
         if: ${{ matrix.os != 'windows-latest' }}
       
@@ -206,7 +206,7 @@ jobs:
           foreach ($example in $examples) {
             Write-Host "Running example: $($example.FullName)"
             try {
-              cargo run --release -- run $example.FullName
+              cargo run --release --bin otter -- run $example.FullName
             } catch {
               Write-Host "Example $($example.Name) failed, continuing..."
             }
