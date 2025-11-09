@@ -137,13 +137,51 @@ impl LexerState {
 
     fn advance(&mut self, count: usize) {
         for _ in 0..count {
-            if self.current_char() == Some(b'\n') {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += 1;
+            match self.current_char() {
+                Some(b'\r') => {
+                    self.offset += 1;
+                    if self.current_char() == Some(b'\n') {
+                        self.offset += 1;
+                    }
+                    self.line += 1;
+                    self.column = 1;
+                }
+                Some(b'\n') => {
+                    self.offset += 1;
+                    self.line += 1;
+                    self.column = 1;
+                }
+                Some(_) => {
+                    self.offset += 1;
+                    self.column += 1;
+                }
+                None => return,
             }
-            self.offset += 1;
+        }
+    }
+
+    fn newline_len_at(&self, offset: usize) -> Option<usize> {
+        match self.source.get(offset) {
+            Some(b'\n') => Some(1),
+            Some(b'\r') => {
+                if self.source.get(offset + 1) == Some(&b'\n') {
+                    Some(2)
+                } else {
+                    Some(1)
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn current_newline_len(&self) -> Option<usize> {
+        self.newline_len_at(self.offset)
+    }
+
+    fn emit_newline_token(&mut self) {
+        if let Some(len) = self.current_newline_len() {
+            self.emit_token(TokenKind::Newline, self.offset, len);
+            self.advance(1);
         }
     }
 
@@ -193,6 +231,12 @@ impl LexerState {
 
         // Process indentation
         while let Some(ch) = self.current_char() {
+            if self.current_newline_len().is_some() {
+                // Empty line, just add newline
+                self.emit_newline_token();
+                return;
+            }
+
             match ch {
                 b' ' => {
                     indent_width += 1;
@@ -206,12 +250,6 @@ impl LexerState {
                         span,
                     });
                     self.advance(1);
-                }
-                b'\n' => {
-                    // Empty line, just add newline
-                    self.emit_token(TokenKind::Newline, self.offset, 1);
-                    self.advance(1);
-                    return;
                 }
                 b'#' => {
                     // Comment line, skip to end
@@ -227,9 +265,8 @@ impl LexerState {
 
         if is_blank {
             // Add newline if we haven't already
-            if let Some(b'\n') = self.current_char() {
-                self.emit_token(TokenKind::Newline, self.offset, 1);
-                self.advance(1);
+            if self.current_newline_len().is_some() {
+                self.emit_newline_token();
             }
             return;
         }
@@ -244,11 +281,14 @@ impl LexerState {
     fn skip_whitespace_and_check_blank(&mut self) -> bool {
         let mut has_non_whitespace = false;
         while let Some(ch) = self.current_char() {
+            if self.current_newline_len().is_some() {
+                break;
+            }
+
             match ch {
                 b' ' | b'\t' => {
                     self.advance(1);
                 }
-                b'\n' => break,
                 b'#' => break,
                 _ => {
                     has_non_whitespace = true;
@@ -297,12 +337,12 @@ impl LexerState {
                 None => break,
             };
 
+            if self.current_newline_len().is_some() {
+                self.emit_newline_token();
+                return;
+            }
+
             match ch {
-                b'\n' => {
-                    self.emit_token(TokenKind::Newline, self.offset, 1);
-                    self.advance(1);
-                    return;
-                }
                 b'#' => {
                     self.skip_to_end_of_line();
                     return;
@@ -497,6 +537,16 @@ impl LexerState {
         let mut result = String::new();
 
         while let Some(ch) = self.current_char() {
+            if self.current_newline_len().is_some() {
+                let span = self.create_span(start, self.offset - start);
+                self.emit_error(LexerError::UnterminatedString {
+                    line: self.line,
+                    column: self.column,
+                    span,
+                });
+                return;
+            }
+
             match ch {
                 b'"' => {
                     let span = Span::new(start, self.offset + 1);
@@ -522,15 +572,6 @@ impl LexerState {
                         self.advance(1);
                     }
                 }
-                b'\n' => {
-                    let span = self.create_span(start, self.offset - start);
-                    self.emit_error(LexerError::UnterminatedString {
-                        line: self.line,
-                        column: self.column,
-                        span,
-                    });
-                    return;
-                }
                 _ => {
                     result.push(ch as char);
                     self.advance(1);
@@ -554,6 +595,13 @@ impl LexerState {
         let mut result = String::new();
 
         while let Some(ch) = self.current_char() {
+            if self.current_newline_len().is_some() {
+                // Actual newline in multi-line string
+                result.push('\n');
+                self.advance(1);
+                continue;
+            }
+
             match ch {
                 b'"' => {
                     // Check if this is the closing """
@@ -586,13 +634,6 @@ impl LexerState {
                         self.advance(1);
                     }
                 }
-                b'\n' => {
-                    // Actual newline in multi-line string
-                    result.push('\n');
-                    self.line += 1;
-                    self.column = 1;
-                    self.offset += 1;
-                }
                 _ => {
                     result.push(ch as char);
                     self.advance(1);
@@ -616,6 +657,16 @@ impl LexerState {
         let mut result = String::new();
 
         while let Some(ch) = self.current_char() {
+            if self.current_newline_len().is_some() {
+                let span = self.create_span(start, self.offset - start);
+                self.emit_error(LexerError::UnterminatedString {
+                    line: self.line,
+                    column: self.column,
+                    span,
+                });
+                return;
+            }
+
             match ch {
                 b'"' => {
                     let span = Span::new(start, self.offset + 1);
@@ -642,15 +693,6 @@ impl LexerState {
                         result.push(escaped_char);
                         self.advance(1);
                     }
-                }
-                b'\n' => {
-                    let span = self.create_span(start, self.offset - start);
-                    self.emit_error(LexerError::UnterminatedString {
-                        line: self.line,
-                        column: self.column,
-                        span,
-                    });
-                    return;
                 }
                 _ => {
                     result.push(ch as char);
@@ -777,10 +819,9 @@ impl LexerState {
     }
 
     fn skip_to_end_of_line(&mut self) {
-        while let Some(ch) = self.current_char() {
-            if ch == b'\n' {
-                self.emit_token(TokenKind::Newline, self.offset, 1);
-                self.advance(1);
+        while self.current_char().is_some() {
+            if self.current_newline_len().is_some() {
+                self.emit_newline_token();
                 return;
             }
             self.advance(1);
@@ -803,4 +844,43 @@ impl LexerState {
 // Legacy function for backward compatibility - delegates to new implementation
 pub fn tokenize_legacy(source: &str) -> LexResult<Vec<Token>> {
     tokenize(source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::TokenKind;
+
+    fn token_kinds(source: &str) -> Vec<TokenKind> {
+        tokenize(source)
+            .expect("lexing should succeed")
+            .into_iter()
+            .map(|token| token.kind)
+            .collect()
+    }
+
+    #[test]
+    fn crlf_and_lf_inputs_produce_same_token_stream() {
+        let lf_source = "use otter:fmt\nfn main():\n    fmt.println(\"hi\")\n";
+        let crlf_source = lf_source.replace('\n', "\r\n");
+
+        let lf_tokens = token_kinds(lf_source);
+        let crlf_tokens = token_kinds(&crlf_source);
+
+        assert_eq!(crlf_tokens, lf_tokens);
+    }
+
+    #[test]
+    fn newline_tokens_capture_full_crlf_span() {
+        let source = "fn main():\r\n    pass\r\n";
+        let tokens = tokenize(source).expect("lexing should succeed");
+
+        let newline_span = tokens
+            .iter()
+            .find(|token| matches!(token.kind, TokenKind::Newline))
+            .map(|token| token.span.len())
+            .expect("expected at least one newline token");
+
+        assert_eq!(newline_span, 2);
+    }
 }

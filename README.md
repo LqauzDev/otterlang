@@ -22,7 +22,7 @@ cd otterlang
 
 # Using Nix (recommended)
 nix develop
-cargo build --release
+cargo +nightly build --release
 
 # Create and run your first program
 cat > hello.ot << 'EOF'
@@ -41,7 +41,7 @@ otter run hello.ot
 
 ```bash
 nix develop
-cargo build --release
+cargo +nightly build --release
 ```
 
 The Nix flake automatically provides Rust nightly, LLVM 18, and all dependencies.
@@ -59,8 +59,7 @@ export LLVM_SYS_181_PREFIX=$(brew --prefix llvm@18)
 export LLVM_SYS_180_PREFIX=$LLVM_SYS_181_PREFIX
 export PATH="$LLVM_SYS_181_PREFIX/bin:$PATH"
 rustup toolchain install nightly
-rustup default nightly
-cargo build --release
+cargo +nightly build --release
 ```
 
 **Ubuntu/Debian:**
@@ -69,33 +68,68 @@ sudo apt-get install -y llvm-18 llvm-18-dev clang-18
 export LLVM_SYS_181_PREFIX=/usr/lib/llvm-18
 export LLVM_SYS_180_PREFIX=$LLVM_SYS_181_PREFIX
 rustup toolchain install nightly
-rustup default nightly
-cargo build --release
+cargo +nightly build --release
 ```
 
 **Windows:**
 ```powershell
-# Install LLVM 18 using winget (recommended) or Chocolatey
-winget install --id LLVM.LLVM --version 18.1.0 --silent --accept-package-agreements --accept-source-agreements
-# Or using Chocolatey:
-# choco install llvm -y
+# Install LLVM 18.1 using llvmenv (recommended)
+cargo install llvmenv --locked
+llvmenv install 18.1
+llvmenv global 18.1
 
-# Set environment variables (adjust path if LLVM is installed elsewhere)
-$env:LLVM_SYS_181_PREFIX = "C:\Program Files\LLVM"
-$env:LLVM_SYS_180_PREFIX = $env:LLVM_SYS_181_PREFIX
-$env:Path = "$env:LLVM_SYS_181_PREFIX\bin;$env:Path"
+# Set environment variables
+$llvmPath = llvmenv prefix
+$env:LLVM_SYS_181_PREFIX = $llvmPath
+$env:LLVM_SYS_180_PREFIX = $llvmPath
+$env:Path = "$llvmPath\bin;$env:Path"
+
+# Alternative: Install using winget or Chocolatey
+# winget install --id LLVM.LLVM --silent --accept-package-agreements --accept-source-agreements
+# choco install llvm -y
+# $env:LLVM_SYS_181_PREFIX = "C:\Program Files\LLVM"
+# $env:LLVM_SYS_180_PREFIX = $env:LLVM_SYS_181_PREFIX
+# $env:Path = "$env:LLVM_SYS_181_PREFIX\bin;$env:Path"
 
 # Install Rust nightly
 rustup toolchain install nightly
 rustup default nightly
 
 # Build
-cargo build --release
+cargo +nightly build --release
 ```
 
-**Note for Windows:** If LLVM is installed in a different location, update `LLVM_SYS_181_PREFIX` accordingly. Common locations:
-- `C:\Program Files\LLVM`
-- `C:\Program Files (x86)\LLVM`
+**Note for Windows:** If using winget/Chocolatey, LLVM may be installed in `C:\Program Files\LLVM` or `C:\Program Files (x86)\LLVM`.
+
+**Important:** On Windows, you must use the **x64 Native Tools Command Prompt for VS 2022** to build. The MSVC linker requires environment variables that are automatically set in the Developer Command Prompt. Open it from the Start menu, then navigate to your project directory and run the build commands. Regular PowerShell/CMD will not have the MSVC environment configured.
+
+## After Building
+
+Once the build completes successfully, you can:
+
+**Run a program:**
+```bash
+cargo +nightly run --release --bin otterlang -- run examples/basic/hello.ot
+```
+
+**Build an executable:**
+```bash
+cargo +nightly run --release --bin otterlang -- build examples/basic/hello.ot -o hello
+```
+
+**Run tests:**
+```bash
+cargo +nightly test --release
+```
+
+**Use the compiler directly:**
+```bash
+# The binary is located at:
+# target/release/otterlang (or target/release/otterlang.exe on Windows)
+./target/release/otterlang run program.ot
+# Or on Windows:
+# target\release\otterlang.exe run program.ot
+```
 
 ## Language Features
 
