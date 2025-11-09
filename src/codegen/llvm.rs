@@ -76,6 +76,44 @@ fn llvm_triple_to_string(triple: &inkwell::targets::TargetTriple) -> String {
         .to_string()
 }
 
+fn preferred_target_flag(driver: &str) -> &'static str {
+    if driver_prefers_clang_style(driver) {
+        "-target"
+    } else {
+        "--target"
+    }
+}
+
+fn driver_prefers_clang_style(driver: &str) -> bool {
+    let lower = driver.to_ascii_lowercase();
+    if lower.contains("clang") || lower.contains("wasm-ld") {
+        return true;
+    }
+
+    match Path::new(driver)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_ascii_lowercase())
+    {
+        Some(ref name) if name == "cc" || name == "c++" => compiler_reports_clang(driver),
+        _ => false,
+    }
+}
+
+fn compiler_reports_clang(driver: &str) -> bool {
+    Command::new(driver)
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|output| {
+            let mut text = String::new();
+            text.push_str(&String::from_utf8_lossy(&output.stdout));
+            text.push_str(&String::from_utf8_lossy(&output.stderr));
+            Some(text.to_ascii_lowercase().contains("clang"))
+        })
+        .unwrap_or(false)
+}
+
 pub struct BuildArtifact {
     pub binary: PathBuf,
     pub ir: Option<String>,
@@ -295,7 +333,8 @@ pub fn build_executable(
             cc.arg("-fPIC");
         }
         // Add target triple for cross-compilation
-        cc.arg("--target").arg(&triple_str);
+        let compiler_target_flag = preferred_target_flag(&c_compiler);
+        cc.arg(compiler_target_flag).arg(&triple_str);
 
         cc.arg(rt_c).arg("-o").arg(&runtime_o);
 
@@ -314,10 +353,12 @@ pub fn build_executable(
     let linker = runtime_triple.linker();
     let mut cc = Command::new(&linker);
 
+    let linker_target_flag = preferred_target_flag(&linker);
+
     // Add target-specific linker flags
     if runtime_triple.is_wasm() {
         // WebAssembly linking
-        cc.arg("--target")
+        cc.arg(linker_target_flag)
             .arg(&triple_str)
             .arg("--no-entry")
             .arg("--export-dynamic")
@@ -326,7 +367,7 @@ pub fn build_executable(
             .arg(output);
     } else {
         // Standard linking
-        cc.arg("--target").arg(&triple_str);
+        cc.arg(linker_target_flag).arg(&triple_str);
         if let Some(ref rt_o) = runtime_o {
             cc.arg(&object_path).arg(rt_o).arg("-o").arg(output);
         } else {
@@ -501,7 +542,8 @@ pub fn build_shared_library(
         if runtime_triple.needs_pic() && !runtime_triple.is_windows() {
             cc.arg("-fPIC");
         }
-        cc.arg("--target").arg(&triple_str);
+        let compiler_target_flag = preferred_target_flag(&c_compiler);
+        cc.arg(compiler_target_flag).arg(&triple_str);
 
         cc.arg(rt_c).arg("-o").arg(&runtime_o);
 
@@ -537,8 +579,9 @@ pub fn build_shared_library(
     let linker = runtime_triple.linker();
     let mut cc = Command::new(&linker);
 
+    let linker_target_flag = preferred_target_flag(&linker);
     if runtime_triple.is_wasm() {
-        cc.arg("--target")
+        cc.arg(linker_target_flag)
             .arg(&triple_str)
             .arg("--no-entry")
             .arg("--export-dynamic")
@@ -550,7 +593,7 @@ pub fn build_shared_library(
         if runtime_triple.needs_pic() {
             cc.arg("-fPIC");
         }
-        cc.arg("--target").arg(&triple_str);
+        cc.arg(linker_target_flag).arg(&triple_str);
         cc.arg("-o")
             .arg(&lib_path)
             .arg(&object_path);
