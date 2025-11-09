@@ -1,5 +1,3 @@
-# Advanced pipeline demo rewritten for current OtterLang capabilities
-
 use fmt
 
 fn stage_one(index: float) -> float:
