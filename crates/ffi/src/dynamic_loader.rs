@@ -22,7 +22,7 @@ impl DynamicLibrary {
     }
 
     pub unsafe fn get<T>(&self, symbol: &[u8]) -> Result<Symbol<'_, T>> {
-        self.inner.get(symbol).map_err(|err| err.into())
+        unsafe { self.inner.get(symbol) }.map_err(|err| err.into())
     }
 }
 

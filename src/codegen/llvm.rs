@@ -2024,7 +2024,7 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                     }
                     other => bail!("unsupported binary operation for strings: {:?}", other),
                 }
-            }
+            },
             OtterType::I64 => {
                 let lhs = left_value
                     .value
@@ -2109,7 +2109,7 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                     _ => bail!("unsupported binary operation for integers: {:?}", op),
                 };
                 return Ok(EvaluatedValue::with_value(result, OtterType::I64));
-            }
+            },
             OtterType::F64 => {
                 let lhs = left_value
                     .value
@@ -2226,7 +2226,7 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                     _ => bail!("unsupported binary operation for floats: {:?}", op),
                 };
                 return Ok(EvaluatedValue::with_value(result, OtterType::F64));
-            }
+            },
             _ => bail!(
                 "binary expressions support only integers and floats, got {:?}",
                 left_value.ty
