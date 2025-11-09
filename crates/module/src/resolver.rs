@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail};
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+use std::fs;
 
 /// Represents a module path that can be resolved
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -262,7 +264,7 @@ mod tests {
         let fmt_module = stdlib_dir.join("fmt.ot");
         fs::write(&fmt_module, "fn main: pass").unwrap();
 
-        let mut resolver = ModuleResolver::new(temp.path().to_path_buf(), Some(stdlib_dir));
+        let resolver = ModuleResolver::new(temp.path().to_path_buf(), Some(stdlib_dir));
         let resolved = resolver.resolve("fmt").unwrap();
         assert_eq!(resolved, fmt_module.canonicalize().unwrap());
 

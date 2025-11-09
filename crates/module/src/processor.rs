@@ -41,24 +41,35 @@ impl ModuleProcessor {
                             rust_imports.push(module.clone());
                         }
                         ModulePath::Stdlib(_) => {
-                            let resolved = self.loader.resolver().resolve(module)?;
+                            let resolved = {
+                                let resolver = self.loader.resolver();
+                                resolver.resolve(module)?
+                            };
                             self.load_stdlib_dependency(resolved, &mut dependencies)?;
                         }
                         ModulePath::Relative(_) | ModulePath::Absolute(_) => {
-                            let resolved = self.loader.resolver().resolve(module)?;
+                            let source_dir = self.source_dir.clone();
+                            let resolved = {
+                                let resolver = self.loader.resolver();
+                                resolver.resolve(module)?
+                            };
                             self.load_local_dependency(
-                                &self.source_dir,
+                                &source_dir,
                                 resolved,
                                 &mut dependencies,
                             )?;
                         }
                         ModulePath::Unqualified(_) => {
-                            let resolved = self.loader.resolver().resolve(module)?;
+                            let source_dir = self.source_dir.clone();
+                            let resolved = {
+                                let resolver = self.loader.resolver();
+                                resolver.resolve(module)?
+                            };
                             if self.is_stdlib_path(&resolved) {
                                 self.load_stdlib_dependency(resolved, &mut dependencies)?;
                             } else {
                                 self.load_local_dependency(
-                                    &self.source_dir,
+                                    &source_dir,
                                     resolved,
                                     &mut dependencies,
                                 )?;
