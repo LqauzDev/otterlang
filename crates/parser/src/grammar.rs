@@ -994,12 +994,14 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
     //     field: Type
     //     def method(self, ...) -> ReturnType:
     //         ...
-    let struct_generics = identifier_parser()
-        .separated_by(just(TokenKind::Comma))
-        .allow_trailing()
-        .delimited_by(just(TokenKind::Lt), just(TokenKind::Gt))
-        .or_not()
-        .map(|params| params.unwrap_or_default());
+    let struct_generics = || {
+        identifier_parser()
+            .separated_by(just(TokenKind::Comma))
+            .allow_trailing()
+            .delimited_by(just(TokenKind::Lt), just(TokenKind::Gt))
+            .or_not()
+            .map(|params| params.unwrap_or_default())
+    };
 
     let enum_variant = identifier_parser()
         .then(
@@ -1097,7 +1099,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .clone()
         .then(just(TokenKind::Struct).or(just(TokenKind::Class))) // Accept both struct and class
         .then(identifier_parser())
-        .then(struct_generics)
+        .then(struct_generics())
         .then_ignore(just(TokenKind::Colon))
         .then_ignore(newline.clone())
         .then(struct_body.delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent)))
@@ -1116,13 +1118,13 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .clone()
         .then(just(TokenKind::Enum))
         .then(identifier_parser())
-        .then(struct_generics.clone())
+        .then(struct_generics())
         .then_ignore(just(TokenKind::Colon))
         .then_ignore(newline.clone())
         .then(enum_body.delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent)))
         .then_ignore(newline.clone().or_not())
         .map(
-            |((((pub_kw, _), name), generics), variants)| Statement::Enum {
+            |((((pub_kw, _), name), generics), variants): ((((Option<TokenKind>, TokenKind), String), Vec<String>), Vec<ast::nodes::EnumVariant>)| Statement::Enum {
                 name,
                 variants,
                 public: pub_kw.is_some(),
