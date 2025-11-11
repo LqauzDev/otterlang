@@ -306,7 +306,6 @@ fn expr_parser() -> impl Parser<TokenKind, Expr, Error = Simple<TokenKind>> {
             lambda_stmt.repeated().at_least(1).map(Block::new)
         });
 
-        // Pythonic: only 'lambda' for lambda expressions
         let lambda_keyword = just(TokenKind::Lambda);
 
         let lambda_expr = lambda_keyword
@@ -324,7 +323,6 @@ fn expr_parser() -> impl Parser<TokenKind, Expr, Error = Simple<TokenKind>> {
                 body,
             });
 
-        // Pythonic struct initialization: Point(x=1.0, y=2.0)
         let struct_init_pythonic = identifier_parser()
             .then(
                 // Keyword argument: name=value
@@ -558,7 +556,6 @@ fn expr_parser() -> impl Parser<TokenKind, Expr, Error = Simple<TokenKind>> {
                 right: Box::new(right),
             });
 
-        // Pythonic match expression: match expr: case pattern: body
         let newline = just(TokenKind::Newline).repeated().at_least(1);
         let match_case = just(TokenKind::Case)
             .ignore_then(pattern_parser(expr.clone()))
@@ -709,7 +706,6 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
 
     let pub_keyword = just(TokenKind::Pub).or_not();
 
-    // Support both direct assignment (Pythonic) and explicit let declarations
     let let_stmt = pub_keyword
         .clone()
         .then(just(TokenKind::Let).or_not())
@@ -722,7 +718,6 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             public: pub_kw.is_some(),
         });
 
-    // Augmented assignments only (Pythonic: x += y, x -= y, etc.)
     // Simple assignments (=) are handled by let_stmt (declaration or reassignment)
     let assignment_stmt = identifier_parser()
         .then(choice((
@@ -1018,8 +1013,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
 
     let function_ret_type = just(TokenKind::Arrow).ignore_then(type_parser()).or_not();
 
-    // Support both 'def' (Pythonic) and 'fn' (legacy) for function definitions
-    let function_keyword = just(TokenKind::Def); // fn is deprecated and maps to Def in tokenizer
+    let function_keyword = just(TokenKind::Def);
 
     let function = pub_keyword
         .clone()
@@ -1040,7 +1034,6 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .map(Statement::Function)
         .then_ignore(newline.clone().or_not());
 
-    // Pythonic struct definition: struct Name<T>:
     //     field: Type
     //     def method(self, ...) -> ReturnType:
     //         ...
@@ -1083,7 +1076,6 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .map(|(name, ty)| (name, ty));
 
     // Parse struct body: fields and methods (indented)
-    // Pythonic: struct Point:
     //     x: float
     //     y: float
     //     def distance(self) -> float:
@@ -1162,7 +1154,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
 
     let struct_def = pub_keyword
         .clone()
-        .then(just(TokenKind::Struct).or(just(TokenKind::Class))) // Accept both struct and class
+        .then(just(TokenKind::Struct))
         .then(identifier_parser())
         .then(struct_generics())
         .then_ignore(just(TokenKind::Colon))

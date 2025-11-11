@@ -1,11 +1,11 @@
-fn encode(obj: any) -> string:
+def encode(obj: any) -> string:
     return json.encode(obj)
 
-fn decode(str: string) -> any:
+def decode(str: string) -> any:
     return json.decode(str)
 
-fn pretty(str: string) -> string:
+def pretty(str: string) -> string:
     return json.pretty(str)
 
-fn validate(str: string) -> bool:
+def validate(str: string) -> bool:
     return json.validate(str)

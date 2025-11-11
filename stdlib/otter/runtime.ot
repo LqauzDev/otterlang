@@ -1,22 +1,22 @@
-fn gos() -> int:
+def gos() -> int:
     return runtime.gos()
 
-fn cpu_count() -> int:
+def cpu_count() -> int:
     return runtime.cpu_count()
 
-fn memory() -> int:
+def memory() -> int:
     return runtime.memory()
 
-fn collect_garbage():
+def collect_garbage():
     runtime.collect_garbage()
 
-fn stats() -> string:
+def stats() -> string:
     stats_json = runtime.stats()
     return stats_json
 
-fn version() -> string:
+def version() -> string:
     version_str = runtime.version()
     return version_str
 
-fn free_string(ptr: string):
+def free_string(ptr: string):
     runtime.free(ptr)

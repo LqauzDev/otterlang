@@ -28,6 +28,15 @@ Prints a message to standard output followed by a newline.
 println("Hello, World!")
 ```
 
+### `println() -> unit`
+
+Prints a newline to standard output.
+
+**Example:**
+```otter
+println()  # Just prints a newline
+```
+
 ### `eprintln(message: string) -> unit`
 
 Prints a message to standard error followed by a newline (useful for diagnostics).

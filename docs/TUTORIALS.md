@@ -165,7 +165,7 @@ def main():
 ### Defining Structs
 
 ```otter
-class Point:
+struct Point:
     x: float
     y: float
 
@@ -173,8 +173,6 @@ def main():
     p = Point{x: 1.0, y: 2.0}
     print(f"Point: ({p.x}, {p.y})")
 ```
-
-**Note:** `class` is a Pythonic alias for `struct`. Both keywords work identically.
 
 ### Type Aliases
 

@@ -1,65 +1,65 @@
-fn abs(x: float) -> float:
+def abs(x: float) -> float:
     return math.abs(x)
 
-fn sqrt(x: float) -> float:
+def sqrt(x: float) -> float:
     return math.sqrt(x)
 
-fn pow(x: float, y: float) -> float:
+def pow(x: float, y: float) -> float:
     return math.pow(x, y)
 
-fn exp(x: float) -> float:
+def exp(x: float) -> float:
     return math.exp(x)
 
-fn log(x: float) -> float:
+def log(x: float) -> float:
     return math.log(x)
 
-fn sin(x: float) -> float:
+def sin(x: float) -> float:
     return math.sin(x)
 
-fn cos(x: float) -> float:
+def cos(x: float) -> float:
     return math.cos(x)
 
-fn tan(x: float) -> float:
+def tan(x: float) -> float:
     return math.tan(x)
 
-fn atan2(y: float, x: float) -> float:
+def atan2(y: float, x: float) -> float:
     return math.atan2(y, x)
 
-fn floor(x: float) -> float:
+def floor(x: float) -> float:
     return math.floor(x)
 
-fn ceil(x: float) -> float:
+def ceil(x: float) -> float:
     return math.ceil(x)
 
-fn round(x: float) -> float:
+def round(x: float) -> float:
     return math.round(x)
 
-fn clamp(x: float, min: float, max: float) -> float:
+def clamp(x: float, min: float, max: float) -> float:
     return math.clamp(x, min, max)
 
-fn min(a: float, b: float) -> float:
+def min(a: float, b: float) -> float:
     return math.min(a, b)
 
-fn max(a: float, b: float) -> float:
+def max(a: float, b: float) -> float:
     return math.max(a, b)
 
-fn hypot(x: float, y: float) -> float:
+def hypot(x: float, y: float) -> float:
     return math.hypot(x, y)
 
-fn lerp(a: float, b: float, t: float) -> float:
+def lerp(a: float, b: float, t: float) -> float:
     return math.lerp(a, b, t)
 
-fn randf() -> float:
+def randf() -> float:
     return math.randf()
 
-fn randi(max: int) -> int:
+def randi(max: int) -> int:
     return math.randi(max)
 
-fn mean(arr: list<float>, len: int) -> float:
+def mean(arr: list<float>, len: int) -> float:
     return math.mean(arr, len)
 
-fn std(arr: list<float>, len: int) -> float:
+def std(arr: list<float>, len: int) -> float:
     return math.std(arr, len)
 
-fn sum(arr: list<float>, len: int) -> float:
+def sum(arr: list<float>, len: int) -> float:
     return math.sum(arr, len)

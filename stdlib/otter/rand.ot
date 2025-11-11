@@ -1,14 +1,14 @@
-fn seed(n: int):
+def seed(n: int):
     rand.seed(n)
 
-fn int(min: int, max: int) -> int:
+def int(min: int, max: int) -> int:
     return rand.int(min, max)
 
-fn float() -> float:
+def float() -> float:
     return rand.float()
 
-fn bytes(n: int) -> string:
+def bytes(n: int) -> string:
     return rand.bytes(n)
 
-fn uuid() -> string:
+def uuid() -> string:
     return rand.uuid()

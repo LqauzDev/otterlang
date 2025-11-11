@@ -42,7 +42,7 @@ name123
 
 ### Keywords
 
-Reserved keywords: `def`, `let`, `return`, `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `pass`, `class`, `struct`, `enum`, `match`, `case`, `use`, `pub`, `spawn`, `await`, `try`, `except`, `finally`, `raise`, `as`, `type`
+Reserved keywords: `def`, `let`, `return`, `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `pass`, `struct`, `enum`, `match`, `case`, `use`, `pub`, `spawn`, `await`, `try`, `except`, `finally`, `raise`, `as`, `type`
 
 ### Literals
 
@@ -228,11 +228,6 @@ pub def exported_function():
 ### Definition
 
 ```otter
-class Point:
-    x: float
-    y: float
-
-# 'class' and 'struct' are aliases
 struct Point:
     x: float
     y: float
@@ -248,10 +243,10 @@ let origin = Point{x: 0.0, y: 0.0}
 ### Methods
 
 ```otter
-class Point:
+struct Point:
     x: float
     y: float
-    
+
     def distance(self) -> float:
         return math.sqrt(self.x * self.x + self.y * self.y)
 ```
@@ -259,7 +254,7 @@ class Point:
 ### Generic Structs
 
 ```otter
-class Pair<T, U>:
+struct Pair<T, U>:
     first: T
     second: U
 ```
@@ -523,7 +518,10 @@ Re-exports must reference items that are actually public in the source module. R
 Prints a message to standard output.
 
 **`println(message: string) -> unit`**
-Prints a message followed by a newline.
+Prints a message to standard output followed by a newline.
+
+**`println() -> unit`**
+Prints a newline to standard output.
 
 **`eprintln(message: string) -> unit`**
 Prints a message to standard error.

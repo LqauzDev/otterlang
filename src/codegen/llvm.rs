@@ -265,6 +265,10 @@ pub fn build_executable(
     // Convert to LLVM triple format
     let triple_str = runtime_triple.to_llvm_triple();
     let llvm_triple = inkwell::targets::TargetTriple::create(&triple_str);
+
+    // Check if we're compiling for the native target
+    let native_triple = inkwell::targets::TargetMachine::get_default_triple();
+    let is_native_target = llvm_triple_to_string(&llvm_triple) == llvm_triple_to_string(&native_triple);
     compiler.module.set_triple(&llvm_triple);
 
     let target = Target::from_triple(&llvm_triple)
@@ -330,9 +334,11 @@ pub fn build_executable(
         if runtime_triple.needs_pic() && !runtime_triple.is_windows() {
             cc.arg("-fPIC");
         }
-        // Add target triple for cross-compilation
-        let compiler_target_flag = preferred_target_flag(&c_compiler);
-        cc.arg(compiler_target_flag).arg(&triple_str);
+        // Add target triple for cross-compilation (skip for native target)
+        if !is_native_target {
+            let compiler_target_flag = preferred_target_flag(&c_compiler);
+            cc.arg(compiler_target_flag).arg(&triple_str);
+        }
 
         cc.arg(rt_c).arg("-o").arg(&runtime_o);
 
@@ -351,11 +357,10 @@ pub fn build_executable(
     let linker = runtime_triple.linker();
     let mut cc = Command::new(&linker);
 
-    let linker_target_flag = preferred_target_flag(&linker);
-
     // Add target-specific linker flags
     if runtime_triple.is_wasm() {
         // WebAssembly linking
+        let linker_target_flag = preferred_target_flag(&linker);
         cc.arg(linker_target_flag)
             .arg(&triple_str)
             .arg("--no-entry")
@@ -365,7 +370,10 @@ pub fn build_executable(
             .arg(output);
     } else {
         // Standard linking
-        cc.arg(linker_target_flag).arg(&triple_str);
+        if !is_native_target {
+            let linker_target_flag = preferred_target_flag(&linker);
+            cc.arg(linker_target_flag).arg(&triple_str);
+        }
         if let Some(ref rt_o) = runtime_o {
             cc.arg(&object_path).arg(rt_o).arg("-o").arg(output);
         } else {

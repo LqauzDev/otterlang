@@ -5,10 +5,9 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, PartialEq, Eq)]
 pub enum TokenKind {
     // Keywords
-    Fn,     // Legacy: kept for backward compatibility
-    Def,    // Pythonic function definition
-    Lambda, // Pythonic lambda expression
-    Let,    // Optional: kept for backward compatibility
+    Def,
+    Lambda,
+    Let,
     Return,
     If,
     Else,
@@ -39,7 +38,6 @@ pub enum TokenKind {
     Finally,
     Raise,
     Struct,
-    Class, // Pythonic alias for struct
     Enum,
 
     // Identifiers
@@ -100,8 +98,7 @@ impl Hash for TokenKind {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             // Keywords - use discriminant for efficiency
-            TokenKind::Fn => 0u16.hash(state),
-            TokenKind::Def => 0u16.hash(state), // Treat as Fn for compatibility (same semantics)
+            TokenKind::Def => 0u16.hash(state),
             TokenKind::Lambda => 1u16.hash(state),
             TokenKind::Let => 2u16.hash(state),
             TokenKind::Return => 3u16.hash(state),
@@ -134,7 +131,6 @@ impl Hash for TokenKind {
             TokenKind::Finally => 30u16.hash(state),
             TokenKind::Raise => 31u16.hash(state),
             TokenKind::Struct => 32u16.hash(state),
-            TokenKind::Class => 32u16.hash(state), // Same as Struct (alias)
             TokenKind::Enum => 33u16.hash(state),
 
             // Identifiers
@@ -217,7 +213,6 @@ impl TokenKind {
     pub fn name(&self) -> &'static str {
         match self {
             // Keywords
-            TokenKind::Fn => "fn",
             TokenKind::Def => "def",
             TokenKind::Lambda => "lambda",
             TokenKind::Let => "let",
@@ -251,7 +246,6 @@ impl TokenKind {
             TokenKind::Finally => "finally",
             TokenKind::Raise => "raise",
             TokenKind::Struct => "struct",
-            TokenKind::Class => "class",
             TokenKind::Enum => "enum",
 
             // Identifiers
@@ -338,8 +332,7 @@ impl Token {
     pub fn is_keyword(&self) -> bool {
         matches!(
             self.kind,
-            TokenKind::Fn
-                | TokenKind::Def
+            TokenKind::Def
                 | TokenKind::Lambda
                 | TokenKind::Let
                 | TokenKind::Return
@@ -372,7 +365,6 @@ impl Token {
                 | TokenKind::Finally
                 | TokenKind::Raise
                 | TokenKind::Struct
-                | TokenKind::Class
                 | TokenKind::Enum
         )
     }

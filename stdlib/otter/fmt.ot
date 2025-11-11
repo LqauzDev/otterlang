@@ -1,9 +1,8 @@
-# Deprecated: use the io module instead
-fn print(msg: str):
+def print(msg: str):
     io.print(msg)
 
-fn println(msg: str):
+def println(msg: str):
     io.println(msg)
 
-fn eprintln(msg: str):
+def eprintln(msg: str):
     io.eprintln(msg)
