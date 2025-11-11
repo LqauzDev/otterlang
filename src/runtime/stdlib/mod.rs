@@ -9,4 +9,5 @@ pub mod runtime;
 pub mod sync;
 pub mod sys;
 pub mod task;
+pub mod test;
 pub mod time;

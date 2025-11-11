@@ -1324,8 +1324,15 @@ impl TypeChecker {
                                             .iter()
                                             .map(|ft| ffi_type_to_typeinfo(ft))
                                             .collect();
-                                        let return_type =
-                                            ffi_type_to_typeinfo(&symbol.signature.result);
+                                        let return_type = if full_name == "sys.getenv" {
+                                            if let Some(option_enum) = self.context.build_enum_type("Option", vec![TypeInfo::Str]) {
+                                                option_enum
+                                            } else {
+                                                ffi_type_to_typeinfo(&symbol.signature.result)
+                                            }
+                                        } else {
+                                            ffi_type_to_typeinfo(&symbol.signature.result)
+                                        };
                                         return Ok(TypeInfo::Function {
                                             params,
                                             param_defaults: vec![
@@ -1449,7 +1456,25 @@ impl TypeChecker {
                                 }
                             }
 
-                            Ok(*return_type)
+                            let result_type = if let Expr::Member { object, field } = func.as_ref() {
+                                if let Expr::Identifier { name: module, .. } = object.as_ref() {
+                                    let full_name = format!("{}.{}", module, field);
+                                    if full_name == "sys.getenv" {
+                                        if let Some(option_enum) = self.context.build_enum_type("Option", vec![TypeInfo::Str]) {
+                                            option_enum
+                                        } else {
+                                            *return_type
+                                        }
+                                    } else {
+                                        *return_type
+                                    }
+                                } else {
+                                    *return_type
+                                }
+                            } else {
+                                *return_type
+                            };
+                            Ok(result_type)
                         }
                         _ => {
                             self.errors.push(

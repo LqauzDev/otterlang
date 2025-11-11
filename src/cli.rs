@@ -104,6 +104,21 @@ enum Command {
         #[command(subcommand)]
         subcommand: crate::tools::profiler::ProfileCommand,
     },
+    /// Run tests in OtterLang source files
+    Test {
+        /// Test files or directories to run (defaults to current directory)
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+        /// Run tests in parallel
+        #[arg(short, long)]
+        parallel: bool,
+        /// Show output from passing tests
+        #[arg(short, long)]
+        verbose: bool,
+        /// Update snapshots instead of comparing
+        #[arg(long)]
+        update_snapshots: bool,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -119,6 +134,12 @@ pub fn run() -> Result<()> {
         Command::Profile { subcommand } => {
             crate::tools::profiler::run_profiler_subcommand(subcommand)
         }
+        Command::Test {
+            paths,
+            parallel,
+            verbose,
+            update_snapshots,
+        } => handle_test(&cli, paths, *parallel, *verbose, *update_snapshots),
     }
 }
 
@@ -209,7 +230,7 @@ fn handle_build(cli: &OtterCli, path: &Path, output: Option<PathBuf>) -> Result<
     Ok(())
 }
 
-fn compile_pipeline(
+pub fn compile_pipeline(
     path: &Path,
     source: &str,
     settings: &CompilationSettings,
@@ -373,12 +394,12 @@ fn compile_pipeline(
     })
 }
 
-struct CompilationStage {
+pub struct CompilationStage {
     profiler: Profiler,
-    result: CompilationResult,
+    pub result: CompilationResult,
 }
 
-enum CompilationResult {
+pub enum CompilationResult {
     CacheHit(CacheEntry),
     Compiled {
         artifact: BuildArtifact,
@@ -393,7 +414,7 @@ impl CompilationStage {
 }
 
 #[derive(Clone)]
-struct CompilationSettings {
+pub struct CompilationSettings {
     dump_tokens: bool,
     dump_ast: bool,
     dump_ir: bool,
@@ -526,7 +547,7 @@ fn collect_enabled_feature_names(flags: &LanguageFeatureFlags) -> Vec<&'static s
     names
 }
 
-fn read_source(path: &Path) -> Result<String> {
+pub fn read_source(path: &Path) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
@@ -752,4 +773,62 @@ fn emit_parser_errors(source_id: &str, source: &str, errors: &[ParserError]) {
         .map(|err| err.to_diagnostic(source_id))
         .collect();
     emit_diagnostics(&diagnostics, source);
+}
+
+fn handle_test(
+    cli: &OtterCli,
+    paths: &[PathBuf],
+    parallel: bool,
+    verbose: bool,
+    update_snapshots: bool,
+) -> Result<()> {
+    use crate::test::{TestDiscovery, TestRunner, TestReporter};
+    use rayon::prelude::*;
+
+    let settings = CompilationSettings::from_cli(cli);
+    let mut discovery = TestDiscovery::new();
+    discovery.discover_files(paths)?;
+    
+    let tests = discovery.discover_all_tests()?;
+    
+    if tests.is_empty() {
+        println!("No tests found");
+        return Ok(());
+    }
+
+    println!("Running {} test(s)...\n", tests.len());
+
+    let runner = TestRunner::new(settings, update_snapshots);
+    let mut reporter = TestReporter::new(verbose);
+
+    if parallel {
+        // Run tests in parallel
+        let results: Vec<_> = tests
+            .par_iter()
+            .map(|test| {
+                let result = runner.run_test(test);
+                (test.clone(), result)
+            })
+            .collect();
+
+        for (test, result) in results {
+            reporter.print_result(&test, &result);
+            reporter.record_result(test, result);
+        }
+    } else {
+        // Run tests sequentially
+        for test in tests {
+            let result = runner.run_test(&test);
+            reporter.print_result(&test, &result);
+            reporter.record_result(test, result);
+        }
+    }
+
+    reporter.print_summary();
+
+    if reporter.has_failures() {
+        std::process::exit(1);
+    }
+
+    Ok(())
 }

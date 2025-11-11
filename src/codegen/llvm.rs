@@ -3362,10 +3362,67 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                     .try_as_basic_value()
                     .left()
                     .ok_or_else(|| anyhow!("call to `{name}` did not produce a value"))?;
+                
+                if name == "sys.getenv" && ret_ty.is_pointer_type() {
+                    let str_ptr = value.into_pointer_value();
+                    let null_ptr = self.string_ptr_type.const_null();
+                    let ptr_int = self.builder.build_ptr_to_int(
+                        str_ptr,
+                        self.context.i64_type(),
+                        "ptr_to_int",
+                    )?;
+                    let null_int = self.builder.build_ptr_to_int(
+                        null_ptr,
+                        self.context.i64_type(),
+                        "null_to_int",
+                    )?;
+                    let is_null = self.builder.build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        ptr_int,
+                        null_int,
+                        "check_null",
+                    )?;
+                    
+                    let current_fn = self
+                        .builder
+                        .get_insert_block()
+                        .and_then(|bb| bb.get_parent())
+                        .ok_or_else(|| anyhow!("not in a function"))?;
+                    let none_bb = self.context.append_basic_block(current_fn, "none_branch");
+                    let some_bb = self.context.append_basic_block(current_fn, "some_branch");
+                    let merge_bb = self.context.append_basic_block(current_fn, "merge_getenv");
+                    
+                    self.builder.build_conditional_branch(is_null, none_bb, some_bb)?;
+                    
+                    self.builder.position_at_end(none_bb);
+                    let none_tag = self.get_variant_index("Option", "None").unwrap();
+                    let none_encoded = self.encode_enum_value(none_tag, None)?;
+                    self.builder.build_unconditional_branch(merge_bb)?;
+                    
+                    self.builder.position_at_end(some_bb);
+                    let some_tag = self.get_variant_index("Option", "Some").unwrap();
+                    let some_encoded = self.encode_enum_value(some_tag, Some(ptr_int))?;
+                    self.builder.build_unconditional_branch(merge_bb)?;
+                    
+                    self.builder.position_at_end(merge_bb);
+                    let phi = self.builder.build_phi(
+                        self.context.i64_type(),
+                        "getenv_result",
+                    )?;
+                    phi.add_incoming(&[(&none_encoded, none_bb), (&some_encoded, some_bb)]);
+                    
+                    return Ok(EvaluatedValue::with_value(
+                        phi.as_basic_value().into_int_value().into(),
+                        OtterType::Opaque,
+                    ));
+                }
+                
                 let otter_ty = if ret_ty.is_float_type() {
                     OtterType::F64
                 } else if ret_ty.is_int_type() {
                     OtterType::I64
+                } else if ret_ty.is_pointer_type() {
+                    OtterType::Str
                 } else {
                     OtterType::I32
                 };
