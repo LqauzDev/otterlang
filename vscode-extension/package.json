@@ -1,0 +1,117 @@
+{
+  "name": "otterlang",
+  "displayName": "OtterLang",
+  "description": "Language support for OtterLang",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "otterlang",
+        "aliases": [
+          "OtterLang",
+          "otterlang"
+        ],
+        "extensions": [
+          ".ot"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "otterlang",
+        "scopeName": "source.otterlang",
+        "path": "./syntaxes/otterlang.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "OtterLang",
+      "properties": {
+        "otterlang.lsp.serverPath": {
+          "type": "string",
+          "default": "/Users/jonathan/Downloads/otterlang/target/release/otterlang-lsp",
+          "description": "Path to the OtterLang LSP server binary (absolute path recommended)"
+        },
+        "otterlang.lsp.trace": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "LSP trace level for debugging"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "otterlang.restartServer",
+        "title": "OtterLang: Restart Language Server",
+        "category": "OtterLang"
+      },
+      {
+        "command": "otterlang.startServer",
+        "title": "OtterLang: Start Language Server",
+        "category": "OtterLang"
+      },
+      {
+        "command": "otterlang.stopServer",
+        "title": "OtterLang: Stop Language Server",
+        "category": "OtterLang"
+      },
+      {
+        "command": "otterlang.toggleLogs",
+        "title": "OtterLang: Toggle LSP Logs",
+        "category": "OtterLang"
+      },
+      {
+        "command": "otterlang.showOutput",
+        "title": "OtterLang: Show Output",
+        "category": "OtterLang"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "otterlang.restartServer",
+          "when": "true"
+        },
+        {
+          "command": "otterlang.startServer",
+          "when": "true"
+        },
+        {
+          "command": "otterlang.stopServer",
+          "when": "true"
+        },
+        {
+          "command": "otterlang.toggleLogs",
+          "when": "true"
+        },
+        {
+          "command": "otterlang.showOutput",
+          "when": "true"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}
+

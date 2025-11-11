@@ -245,6 +245,61 @@ The generated `.wasm` file can be run in any WebAssembly runtime (Node.js, brows
 - `examples/ffi/ffi_rand_demo.ot` - Random number generation
 - `examples/ffi/ffi_rand_advanced.ot` - Advanced FFI usage
 
+## VSCode Extension
+
+OtterLang includes a full-featured VSCode extension with comprehensive language support:
+
+### Features
+
+- **Syntax Highlighting** - Full colorization of keywords, built-ins, types, and more
+- **Language Server Protocol (LSP)** - Complete IDE features:
+  - Go to definition, type definition, and implementation
+  - Find all references and workspace symbol search
+  - Symbol renaming with preview
+  - Hover information with type details
+  - Code completion with import suggestions
+  - Semantic syntax highlighting
+  - Inlay hints for inferred types
+  - Code actions and quick fixes
+  - Real-time diagnostics and error checking
+
+### Installation
+
+1. **Build the LSP server:**
+   ```bash
+   cargo build --release --bin otterlang-lsp
+   ```
+
+2. **Package the extension:**
+   ```bash
+   cd vscode-extension
+   npx @vscode/vsce package --allow-missing-repository
+   ```
+
+3. **Install in VSCode:**
+   ```bash
+   code --install-extension otterlang-0.1.0.vsix
+   ```
+
+   Or via VSCode UI: `Cmd+Shift+X` → `...` → "Install from VSIX..." → select `otterlang-0.1.0.vsix`
+
+4. **Configure (if needed):**
+   If the LSP server isn't in your PATH, set `otterlang.lsp.serverPath` in VSCode settings to the full path:
+   ```
+   /path/to/otterlang/target/release/otterlang-lsp
+   ```
+
+### Commands
+
+Available via Command Palette (`Cmd+Shift+P`):
+- `OtterLang: Restart Language Server`
+- `OtterLang: Start Language Server`
+- `OtterLang: Stop Language Server`
+- `OtterLang: Toggle LSP Logs`
+- `OtterLang: Show Output`
+
+For more details, see [vscode-extension/README.md](vscode-extension/README.md).
+
 ## Documentation
 
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Complete language reference

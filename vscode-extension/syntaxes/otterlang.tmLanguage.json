@@ -1,0 +1,365 @@
+{
+  "name": "OtterLang",
+  "scopeName": "source.otterlang",
+  "fileTypes": ["ot"],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#function-definition"
+    },
+    {
+      "include": "#enum-definition"
+    },
+    {
+      "include": "#struct-definition"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#enum-variants"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.otterlang",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.otterlang",
+          "match": "\\b(if|elif|else|for|while|break|continue|return|match|case|try|except|finally|raise|pass|await|spawn)\\b"
+        },
+        {
+          "name": "keyword.other.otterlang",
+          "match": "\\b(def|let|pub|struct|enum|type|use|as|in|and|or|not|is)\\b"
+        },
+        {
+          "name": "constant.language.boolean.otterlang",
+          "match": "\\b(true|false|nil)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.otterlang",
+          "match": "\\b(int|float|bool|string|str|unit|i32|i64|f64)\\b"
+        },
+        {
+          "name": "support.type.otterlang",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*(?:<[^>]+>)?\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.otterlang",
+          "match": "\\b(print|println|eprint|eprintln|len|str|type|range|abs|min|max|round|floor|ceil|cap|append|delete|enumerate|list\\.new|map\\.new|list\\.get|map\\.get|stringify|type_of|fields)\\b"
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "name": "meta.function.otterlang",
+          "begin": "\\b(def|pub def)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.otterlang"
+            }
+          },
+          "end": ":",
+          "patterns": [
+            {
+              "name": "entity.name.function.otterlang",
+              "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+            },
+            {
+              "include": "#function-parameters"
+            },
+            {
+              "include": "#type-annotation"
+            }
+          ]
+        }
+      ]
+    },
+    "function-parameters": {
+      "patterns": [
+        {
+          "name": "variable.parameter.otterlang",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "include": "#type-annotation"
+        }
+      ]
+    },
+    "type-annotation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.type.otterlang",
+          "match": ":"
+        },
+        {
+          "name": "keyword.operator.arrow.otterlang",
+          "match": "->"
+        },
+        {
+          "include": "#types"
+        }
+      ]
+    },
+    "enum-definition": {
+      "patterns": [
+        {
+          "name": "meta.enum.otterlang",
+          "begin": "\\b(pub )?enum\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.otterlang"
+            },
+            "2": {
+              "name": "keyword.other.otterlang"
+            }
+          },
+          "end": ":",
+          "patterns": [
+            {
+              "name": "entity.name.type.enum.otterlang",
+              "match": "\\b[A-Z][a-zA-Z0-9_]*(?:<[^>]+>)?\\b"
+            }
+          ]
+        }
+      ]
+    },
+    "struct-definition": {
+      "patterns": [
+        {
+          "name": "meta.struct.otterlang",
+          "begin": "\\b(pub )?struct\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.otterlang"
+            },
+            "2": {
+              "name": "keyword.other.otterlang"
+            }
+          },
+          "end": ":",
+          "patterns": [
+            {
+              "name": "entity.name.type.struct.otterlang",
+              "match": "\\b[A-Z][a-zA-Z0-9_]*(?:<[^>]+>)?\\b"
+            }
+          ]
+        }
+      ]
+    },
+    "enum-variants": {
+      "patterns": [
+        {
+          "name": "entity.name.type.enum.variant.otterlang",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\.[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "name": "meta.function-call.builtin.otterlang",
+          "begin": "\\b(print|println|eprint|eprintln|len|str|type|range|abs|min|max|round|floor|ceil|cap|append|delete|enumerate|stringify|type_of|fields)\\s*\\(",
+          "beginCaptures": {
+            "1": {
+              "name": "support.function.builtin.otterlang"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.parameters.end.otterlang"
+            }
+          },
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        },
+        {
+          "name": "meta.function-call.otterlang",
+          "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.otterlang"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.parameters.end.otterlang"
+            }
+          },
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.otterlang",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.otterlang",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.otterlang",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.otterlang",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.interpolated.otterlang",
+          "begin": "f[\"']",
+          "end": "[\"']",
+          "patterns": [
+            {
+              "name": "constant.character.escape.otterlang",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.line.otterlang",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.otterlang",
+          "match": "\\b\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.float.otterlang",
+          "match": "\\b\\d+\\.\\d+(?:[eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.scientific.otterlang",
+          "match": "\\b\\d+[eE][+-]?\\d+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.otterlang",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.otterlang",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.assignment.otterlang",
+          "match": "=|\\+=|\\-=|\\*=|/=|%="
+        },
+        {
+          "name": "keyword.operator.logical.otterlang",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.arrow.otterlang",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.range.otterlang",
+          "match": "\\.\\."
+        },
+        {
+          "name": "punctuation.separator.otterlang",
+          "match": ","
+        },
+        {
+          "name": "punctuation.accessor.otterlang",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.bracket.square.otterlang",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.bracket.curly.otterlang",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.bracket.round.otterlang",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.definition.colon.otterlang",
+          "match": ":"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.otterlang",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

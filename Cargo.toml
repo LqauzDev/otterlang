@@ -20,6 +20,10 @@ path = "src/main.rs"
 name = "otter"
 path = "src/bin/otter.rs"
 
+[[bin]]
+name = "otterlang-lsp"
+path = "src/bin/lsp.rs"
+
 [features]
 default = []
 task-runtime = []

@@ -33,7 +33,7 @@ def resource_management_demo():
         print("Acquiring resource: File")
         raise "Processing failed"
         print("All operations completed successfully")
-    except Error as e:
+    except Error as e: 
         print("Operation failed: error occurred")
     finally:
         print("Releasing resource: Database")

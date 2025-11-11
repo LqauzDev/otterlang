@@ -7,20 +7,38 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::runtime::symbol_registry::SymbolRegistry;
-use crate::typecheck::{TypeChecker, TypeError};
-use ast::nodes::{Program, Statement};
+use crate::typecheck::{TypeChecker, TypeError, TypeInfo};
+use ast::nodes::{Expr, Program, Statement};
 use common::Span;
-use lexer::{tokenize, LexerError};
+use lexer::{tokenize, LexerError, Token};
 use parser::parse;
 use utils::errors::{Diagnostic as OtterDiagnostic, DiagnosticSeverity as OtterDiagSeverity};
 
-/// Symbol table mapping variable names to their definition locations
+#[derive(Debug, Clone)]
+struct SymbolInfo {
+    span: Span,
+    kind: SymbolKind,
+    ty: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+enum SymbolKind {
+    Variable,
+    Parameter,
+    Function,
+    Struct,
+    Enum,
+    TypeAlias,
+    Method,
+}
+
+/// Symbol table mapping names to their definition locations and metadata
 #[derive(Debug, Clone, Default)]
 struct SymbolTable {
-    /// Maps variable name to its definition span
-    variables: HashMap<String, Span>,
-    /// Maps function parameter names to their definition spans
-    parameters: HashMap<String, Span>,
+    /// All symbols with their info
+    symbols: HashMap<String, SymbolInfo>,
+    /// References: symbol name -> list of spans where it's used
+    references: HashMap<String, Vec<Span>>,
 }
 
 impl SymbolTable {
@@ -28,9 +46,68 @@ impl SymbolTable {
         Self::default()
     }
 
-    /// Find the definition span for a variable name
-    fn find_definition(&self, name: &str) -> Option<&Span> {
-        self.parameters.get(name).or_else(|| self.variables.get(name))
+    fn add_variable(&mut self, name: String, span: Span, ty: Option<String>) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::Variable,
+            ty,
+        });
+    }
+
+    fn add_parameter(&mut self, name: String, span: Span, ty: Option<String>) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::Parameter,
+            ty,
+        });
+    }
+
+    fn add_function(&mut self, name: String, span: Span, ty: Option<String>) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::Function,
+            ty,
+        });
+    }
+
+    fn add_struct(&mut self, name: String, span: Span) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::Struct,
+            ty: None,
+        });
+    }
+
+    fn add_enum(&mut self, name: String, span: Span) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::Enum,
+            ty: None,
+        });
+    }
+
+    fn add_type_alias(&mut self, name: String, span: Span) {
+        self.symbols.insert(name.clone(), SymbolInfo {
+            span,
+            kind: SymbolKind::TypeAlias,
+            ty: None,
+        });
+    }
+
+    fn add_reference(&mut self, name: String, span: Span) {
+        self.references.entry(name).or_insert_with(Vec::new).push(span);
+    }
+
+    fn find_definition(&self, name: &str) -> Option<&SymbolInfo> {
+        self.symbols.get(name)
+    }
+
+    fn find_references(&self, name: &str) -> &[Span] {
+        self.references.get(name).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    fn all_symbols(&self) -> impl Iterator<Item = (&String, &SymbolInfo)> {
+        self.symbols.iter()
     }
 }
 
@@ -110,8 +187,45 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
-                completion_provider: Some(CompletionOptions::default()),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                    resolve_provider: Some(true),
+                    ..Default::default()
+                }),
                 definition_provider: Some(OneOf::Left(true)),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+                references_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Left(RenameOptions {
+                    prepare_provider: Some(true),
+                    ..Default::default()
+                })),
+                inlay_hint_provider: Some(OneOf::Left(InlayHintOptions {
+                    resolve_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
+                semantic_tokens_provider: Some(
+                    SemanticTokensOptions {
+                        legend: SemanticTokensLegend {
+                            token_types: vec![
+                                SemanticTokenType::FUNCTION,
+                                SemanticTokenType::VARIABLE,
+                                SemanticTokenType::PARAMETER,
+                                SemanticTokenType::TYPE,
+                                SemanticTokenType::CLASS,
+                                SemanticTokenType::ENUM,
+                            ],
+                            token_modifiers: vec![],
+                        },
+                        range: Some(true),
+                        full: Some(SemanticTokensFullOptions::Bool(true)),
+                        work_done_progress_options: Default::default(),
+                    }
+                    .into(),
+                ),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -144,46 +258,6 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let uri = params.text_document_position.text_document.uri;
-        let text = self.document_text(&uri).await.unwrap_or_default();
-
-        let mut items = vec![
-            CompletionItem::new_simple("print".into(), "fn print(message: string)".into()),
-            CompletionItem::new_simple("len".into(), "fn len(value)".into()),
-            CompletionItem::new_simple("await".into(), "await expression".into()),
-        ];
-
-        items.extend(
-            collect_identifiers(&text)
-                .into_iter()
-                .map(|ident| CompletionItem::new_simple(ident, "identifier".into())),
-        );
-
-        Ok(Some(CompletionResponse::Array(items)))
-    }
-
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let position = params.text_document_position_params.position;
-
-        if let Some(text) = self.document_text(&uri).await {
-            if let Some(word) = word_at_position(&text, position) {
-                let contents = HoverContents::Scalar(MarkedString::String(format!(
-                    "symbol `{}` ({} chars)",
-                    word,
-                    word.len()
-                )));
-                return Ok(Some(Hover {
-                    contents,
-                    range: None,
-                }));
-            }
-        }
-
-        Ok(None)
-    }
-
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
@@ -200,8 +274,8 @@ impl LanguageServer for Backend {
 
         if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
             if let Some(var_name) = word_at_position(&text, position) {
-                if let Some(span) = symbol_table.find_definition(&var_name) {
-                    let range = span_to_range(*span, &text);
+                if let Some(symbol_info) = symbol_table.find_definition(&var_name) {
+                    let range = span_to_range(symbol_info.span, &text);
                     return Ok(Some(GotoDefinitionResponse::Scalar(Location {
                         uri: uri.clone(),
                         range,
@@ -212,6 +286,447 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+
+    async fn goto_type_definition(
+        &self,
+        params: GotoTypeDefinitionParams,
+    ) -> Result<Option<GotoTypeDefinitionResponse>> {
+        // For now, same as goto_definition
+        let goto_params = GotoDefinitionParams {
+            text_document_position_params: params.text_document_position_params,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        if let Some(GotoDefinitionResponse::Scalar(loc)) = self.goto_definition(goto_params).await? {
+            Ok(Some(GotoTypeDefinitionResponse::Scalar(loc)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_implementation(
+        &self,
+        params: GotoImplementationParams,
+    ) -> Result<Option<GotoImplementationResponse>> {
+        // For now, same as goto_definition
+        let goto_params = GotoDefinitionParams {
+            text_document_position_params: params.text_document_position_params,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        if let Some(GotoDefinitionResponse::Scalar(loc)) = self.goto_definition(goto_params).await? {
+            Ok(Some(GotoImplementationResponse::Scalar(loc)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            if let Some(var_name) = word_at_position(&text, position) {
+                let mut locations = Vec::new();
+                
+                // Add definition
+                if let Some(symbol_info) = symbol_table.find_definition(&var_name) {
+                    locations.push(Location {
+                        uri: uri.clone(),
+                        range: span_to_range(symbol_info.span, &text),
+                    });
+                }
+                
+                // Add all references
+                for span in symbol_table.find_references(&var_name) {
+                    locations.push(Location {
+                        uri: uri.clone(),
+                        range: span_to_range(*span, &text),
+                    });
+                }
+                
+                return Ok(Some(locations));
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            let mut symbols = Vec::new();
+            for (name, info) in symbol_table.all_symbols() {
+                let kind = match info.kind {
+                    SymbolKind::Function => SymbolKind::FUNCTION,
+                    SymbolKind::Variable => SymbolKind::VARIABLE,
+                    SymbolKind::Parameter => SymbolKind::PARAMETER,
+                    SymbolKind::Struct => SymbolKind::STRUCT,
+                    SymbolKind::Enum => SymbolKind::ENUM,
+                    SymbolKind::TypeAlias => SymbolKind::TYPE_PARAMETER,
+                    SymbolKind::Method => SymbolKind::METHOD,
+                };
+                symbols.push(DocumentSymbol {
+                    name: name.clone(),
+                    detail: info.ty.clone(),
+                    kind,
+                    range: span_to_range(info.span, &text),
+                    selection_range: span_to_range(info.span, &text),
+                    children: None,
+                    deprecated: None,
+                    tags: None,
+                });
+            }
+            return Ok(Some(DocumentSymbolResponse::Nested(symbols)));
+        }
+
+        Ok(None)
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        let query = params.query.to_lowercase();
+        let mut results = Vec::new();
+
+        let state = self.state.read().await;
+        for (uri, symbol_table) in &state.symbol_tables {
+            if let Some(text) = state.documents.get(uri) {
+                for (name, info) in symbol_table.all_symbols() {
+                    if name.to_lowercase().contains(&query) {
+                        let kind = match info.kind {
+                            SymbolKind::Function => SymbolKind::FUNCTION,
+                            SymbolKind::Variable => SymbolKind::VARIABLE,
+                            SymbolKind::Parameter => SymbolKind::PARAMETER,
+                            SymbolKind::Struct => SymbolKind::STRUCT,
+                            SymbolKind::Enum => SymbolKind::ENUM,
+                            SymbolKind::TypeAlias => SymbolKind::TYPE_PARAMETER,
+                            SymbolKind::Method => SymbolKind::METHOD,
+                        };
+                        results.push(SymbolInformation {
+                            name: name.clone(),
+                            kind,
+                            location: Location {
+                                uri: uri.clone(),
+                                range: span_to_range(info.span, text),
+                            },
+                            container_name: None,
+                            deprecated: None,
+                            tags: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(Some(results))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            if let Some(old_name) = word_at_position(&text, position) {
+                let mut changes = HashMap::new();
+                let mut edits = Vec::new();
+
+                // Add definition rename
+                if let Some(symbol_info) = symbol_table.find_definition(&old_name) {
+                    edits.push(TextEdit {
+                        range: span_to_range(symbol_info.span, &text),
+                        new_text: new_name.clone(),
+                    });
+                }
+
+                // Add all references
+                for span in symbol_table.find_references(&old_name) {
+                    edits.push(TextEdit {
+                        range: span_to_range(*span, &text),
+                        new_text: new_name.clone(),
+                    });
+                }
+
+                if !edits.is_empty() {
+                    changes.insert(uri, edits);
+                    return Ok(Some(WorkspaceEdit {
+                        changes: Some(changes),
+                        document_changes: None,
+                        change_annotations: None,
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            if let Some(var_name) = word_at_position(&text, position) {
+                if let Some(symbol_info) = symbol_table.find_definition(&var_name) {
+                    let kind_str = match symbol_info.kind {
+                        SymbolKind::Function => "function",
+                        SymbolKind::Variable => "variable",
+                        SymbolKind::Parameter => "parameter",
+                        SymbolKind::Struct => "struct",
+                        SymbolKind::Enum => "enum",
+                        SymbolKind::TypeAlias => "type",
+                        SymbolKind::Method => "method",
+                    };
+                    let detail = symbol_info.ty.as_ref()
+                        .map(|ty| format!("{}: {}", kind_str, ty))
+                        .unwrap_or_else(|| kind_str.to_string());
+                    
+                    let contents = HoverContents::Scalar(MarkedString::String(detail));
+                    return Ok(Some(Hover {
+                        contents,
+                        range: Some(span_to_range(symbol_info.span, &text)),
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        let mut items = Vec::new();
+
+        // Add built-in functions
+        items.push(CompletionItem {
+            label: "print".into(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("fn print(message: string)".into()),
+            ..Default::default()
+        });
+
+        // Add symbols from symbol table
+        if let Some(symbol_table) = symbol_table {
+            for (name, info) in symbol_table.all_symbols() {
+                let kind = match info.kind {
+                    SymbolKind::Function => CompletionItemKind::FUNCTION,
+                    SymbolKind::Variable => CompletionItemKind::VARIABLE,
+                    SymbolKind::Parameter => CompletionItemKind::VARIABLE,
+                    SymbolKind::Struct => CompletionItemKind::STRUCT,
+                    SymbolKind::Enum => CompletionItemKind::ENUM,
+                    SymbolKind::TypeAlias => CompletionItemKind::TYPE_PARAMETER,
+                    SymbolKind::Method => CompletionItemKind::METHOD,
+                };
+                items.push(CompletionItem {
+                    label: name.clone(),
+                    kind: Some(kind),
+                    detail: info.ty.clone(),
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn inlay_hint(
+        &self,
+        params: InlayHintParams,
+    ) -> Result<Option<Vec<InlayHint>>> {
+        let uri = params.text_document.uri;
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        let mut hints = Vec::new();
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            for (name, info) in symbol_table.all_symbols() {
+                if let Some(ty) = &info.ty {
+                    if matches!(info.kind, SymbolKind::Variable | SymbolKind::Parameter) {
+                        hints.push(InlayHint {
+                            position: span_to_position(info.span.start(), &text),
+                            label: InlayHintLabel::String(format!(": {}", ty)),
+                            kind: Some(InlayHintKind::TYPE),
+                            text_edits: None,
+                            tooltip: None,
+                            padding_left: Some(false),
+                            padding_right: Some(false),
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(Some(hints))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            let mut tokens = Vec::new();
+            let mut prev_line = 0;
+            let mut prev_col = 0;
+
+            for (name, info) in symbol_table.all_symbols() {
+                let pos = span_to_position(info.span.start(), &text);
+                let token_type = match info.kind {
+                    SymbolKind::Function | SymbolKind::Method => 0, // FUNCTION
+                    SymbolKind::Variable => 1, // VARIABLE
+                    SymbolKind::Parameter => 2, // PARAMETER
+                    SymbolKind::Struct => 4, // CLASS
+                    SymbolKind::Enum => 5, // ENUM
+                    SymbolKind::TypeAlias => 3, // TYPE
+                };
+
+                let delta_line = pos.line as u32 - prev_line;
+                let delta_start = if delta_line == 0 {
+                    pos.character as u32 - prev_col
+                } else {
+                    pos.character as u32
+                };
+                let length = (info.span.end() - info.span.start()) as u32;
+
+                tokens.push(delta_line);
+                tokens.push(delta_start);
+                tokens.push(length);
+                tokens.push(token_type);
+                tokens.push(0); // modifiers
+
+                prev_line = pos.line as u32;
+                prev_col = pos.character as u32;
+            }
+
+            return Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+                result_id: None,
+                data: tokens,
+            })));
+        }
+
+        Ok(None)
+    }
+
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> Result<Option<CodeActionResponse>> {
+        let mut actions = Vec::new();
+
+        // Add "Add type annotation" action for variables
+        if let Some(diagnostics) = &params.context.diagnostics {
+            for diag in diagnostics {
+                if diag.message.contains("type") {
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: "Add type annotation".into(),
+                        kind: Some(CodeActionKind::QUICKFIX),
+                        diagnostics: Some(vec![diag.clone()]),
+                        edit: None,
+                        command: None,
+                        is_preferred: Some(true),
+                        disabled: None,
+                        data: None,
+                    }));
+                }
+            }
+        }
+
+        // Add "Extract function" action
+        if let Some(range) = &params.range {
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Extract function".into(),
+                kind: Some(CodeActionKind::REFACTOR_EXTRACT),
+                diagnostics: None,
+                edit: None,
+                command: None,
+                is_preferred: None,
+                disabled: None,
+                data: None,
+            }));
+        }
+
+        if actions.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CodeActionResponse::Array(actions)))
+        }
+    }
+}
+
+/// Convert span start to Position
+fn span_to_position(byte_offset: usize, text: &str) -> Position {
+    let mut line = 0;
+    let mut character = 0;
+    let mut offset = 0;
+
+    for (i, ch) in text.char_indices() {
+        if i >= byte_offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            character = 0;
+        } else {
+            character += 1;
+        }
+        offset = i + ch.len_utf8();
+    }
+
+    Position { line, character }
 }
 
 /// Run a standard I/O LSP server using the backend above.
@@ -222,29 +737,57 @@ pub async fn run_stdio_server() {
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
-/// Build a symbol table from a parsed program
-fn build_symbol_table(program: &Program) -> SymbolTable {
+/// Build symbol table from program, tracking definitions and references
+fn build_symbol_table(program: &Program, tokens: &[Token], text: &str) -> SymbolTable {
     let mut table = SymbolTable::new();
-    build_symbol_table_from_statements(&program.statements, &mut table);
+    
+    // First pass: collect all definitions
+    build_symbol_table_from_statements(&program.statements, &mut table, tokens, text);
+    
+    // Second pass: collect references from expressions
+    collect_references_from_statements(&program.statements, &mut table, tokens, text);
+    
     table
 }
 
-/// Recursively extract variable definitions from statements
-fn build_symbol_table_from_statements(statements: &[Statement], table: &mut SymbolTable) {
+/// Recursively extract symbol definitions from statements
+fn build_symbol_table_from_statements(statements: &[Statement], table: &mut SymbolTable, tokens: &[Token], text: &str) {
     for stmt in statements {
         match stmt {
-            Statement::Let { name, span, .. } => {
+            Statement::Let { name, span, expr, .. } => {
                 if let Some(span) = span {
-                    table.variables.insert(name.clone(), *span);
+                    let ty = infer_type_from_expr(expr);
+                    table.add_variable(name.clone(), *span, ty);
                 }
             }
             Statement::Function(func) => {
+                // Find function name span from tokens
+                if let Some(span) = find_name_span(&func.name, tokens, text) {
+                    let sig = format_function_signature(func);
+                    table.add_function(func.name.clone(), span, Some(sig));
+                }
                 for param in &func.params {
                     if let Some(span) = param.span {
-                        table.parameters.insert(param.name.clone(), span);
+                        let ty = param.ty.as_ref().map(|t| format_type(t));
+                        table.add_parameter(param.name.clone(), span, ty);
                     }
                 }
-                build_symbol_table_from_statements(&func.body.statements, table);
+                build_symbol_table_from_statements(&func.body.statements, table, tokens, text);
+            }
+            Statement::Struct { name, .. } => {
+                if let Some(span) = find_name_span(name, tokens, text) {
+                    table.add_struct(name.clone(), span);
+                }
+            }
+            Statement::Enum { name, .. } => {
+                if let Some(span) = find_name_span(name, tokens, text) {
+                    table.add_enum(name.clone(), span);
+                }
+            }
+            Statement::TypeAlias { name, .. } => {
+                if let Some(span) = find_name_span(name, tokens, text) {
+                    table.add_type_alias(name.clone(), span);
+                }
             }
             Statement::If {
                 then_block,
@@ -252,22 +795,22 @@ fn build_symbol_table_from_statements(statements: &[Statement], table: &mut Symb
                 else_block,
                 ..
             } => {
-                build_symbol_table_from_statements(&then_block.statements, table);
+                build_symbol_table_from_statements(&then_block.statements, table, tokens, text);
                 for (_, block) in elif_blocks {
-                    build_symbol_table_from_statements(&block.statements, table);
+                    build_symbol_table_from_statements(&block.statements, table, tokens, text);
                 }
                 if let Some(block) = else_block {
-                    build_symbol_table_from_statements(&block.statements, table);
+                    build_symbol_table_from_statements(&block.statements, table, tokens, text);
                 }
             }
             Statement::For { var, var_span, body, .. } => {
                 if let Some(span) = var_span {
-                    table.variables.insert(var.clone(), *span);
+                    table.add_variable(var.clone(), *span, None);
                 }
-                build_symbol_table_from_statements(&body.statements, table);
+                build_symbol_table_from_statements(&body.statements, table, tokens, text);
             }
             Statement::While { body, .. } => {
-                build_symbol_table_from_statements(&body.statements, table);
+                build_symbol_table_from_statements(&body.statements, table, tokens, text);
             }
             Statement::Try {
                 body,
@@ -276,23 +819,151 @@ fn build_symbol_table_from_statements(statements: &[Statement], table: &mut Symb
                 finally_block,
                 ..
             } => {
-                build_symbol_table_from_statements(&body.statements, table);
+                build_symbol_table_from_statements(&body.statements, table, tokens, text);
                 for handler in handlers {
-                    build_symbol_table_from_statements(&handler.body.statements, table);
+                    build_symbol_table_from_statements(&handler.body.statements, table, tokens, text);
                 }
                 if let Some(block) = else_block {
-                    build_symbol_table_from_statements(&block.statements, table);
+                    build_symbol_table_from_statements(&block.statements, table, tokens, text);
                 }
                 if let Some(block) = finally_block {
-                    build_symbol_table_from_statements(&block.statements, table);
+                    build_symbol_table_from_statements(&block.statements, table, tokens, text);
                 }
             }
             Statement::Block(block) => {
-                build_symbol_table_from_statements(&block.statements, table);
+                build_symbol_table_from_statements(&block.statements, table, tokens, text);
             }
             _ => {}
         }
     }
+}
+
+/// Collect references to symbols from expressions
+fn collect_references_from_statements(statements: &[Statement], table: &mut SymbolTable, tokens: &[Token], text: &str) {
+    for stmt in statements {
+        match stmt {
+            Statement::Function(func) => {
+                collect_references_from_expr(&Expr::Call {
+                    func: Box::new(Expr::Identifier(func.name.clone())),
+                    args: vec![],
+                }, table, tokens, text);
+                collect_references_from_statements(&func.body.statements, table, tokens, text);
+            }
+            Statement::Let { expr, .. } => {
+                collect_references_from_expr(expr, table, tokens, text);
+            }
+            Statement::If { cond, then_block, elif_blocks, else_block, .. } => {
+                collect_references_from_expr(cond, table, tokens, text);
+                collect_references_from_statements(&then_block.statements, table, tokens, text);
+                for (cond, block) in elif_blocks {
+                    collect_references_from_expr(cond, table, tokens, text);
+                    collect_references_from_statements(&block.statements, table, tokens, text);
+                }
+                if let Some(block) = else_block {
+                    collect_references_from_statements(&block.statements, table, tokens, text);
+                }
+            }
+            Statement::For { iterable, body, .. } => {
+                collect_references_from_expr(iterable, table, tokens, text);
+                collect_references_from_statements(&body.statements, table, tokens, text);
+            }
+            Statement::While { cond, body } => {
+                collect_references_from_expr(cond, table, tokens, text);
+                collect_references_from_statements(&body.statements, table, tokens, text);
+            }
+            Statement::Expr(expr) => {
+                collect_references_from_expr(expr, table, tokens, text);
+            }
+            Statement::Return(Some(expr)) => {
+                collect_references_from_expr(expr, table, tokens, text);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Collect references from an expression
+fn collect_references_from_expr(expr: &Expr, table: &mut SymbolTable, tokens: &[Token], text: &str) {
+    match expr {
+        Expr::Identifier(name) => {
+            if let Some(span) = find_name_span(name, tokens, text) {
+                table.add_reference(name.clone(), span);
+            }
+        }
+        Expr::Call { func, args } => {
+            collect_references_from_expr(func, table, tokens, text);
+            for arg in args {
+                collect_references_from_expr(arg, table, tokens, text);
+            }
+        }
+        Expr::Member { object, .. } => {
+            collect_references_from_expr(object, table, tokens, text);
+        }
+        Expr::Binary { left, right, .. } => {
+            collect_references_from_expr(left, table, tokens, text);
+            collect_references_from_expr(right, table, tokens, text);
+        }
+        Expr::Unary { expr, .. } => {
+            collect_references_from_expr(expr, table, tokens, text);
+        }
+        Expr::If { cond, then_branch, else_branch } => {
+            collect_references_from_expr(cond, table, tokens, text);
+            collect_references_from_expr(then_branch, table, tokens, text);
+            if let Some(else_expr) = else_branch {
+                collect_references_from_expr(else_expr, table, tokens, text);
+            }
+        }
+        Expr::Array(elements) => {
+            for elem in elements {
+                collect_references_from_expr(elem, table, tokens, text);
+            }
+        }
+        Expr::Dict(pairs) => {
+            for (key, value) in pairs {
+                collect_references_from_expr(key, table, tokens, text);
+                collect_references_from_expr(value, table, tokens, text);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Find span of a name in tokens (approximate)
+fn find_name_span(name: &str, tokens: &[Token], text: &str) -> Option<Span> {
+    for token in tokens {
+        if let lexer::token::TokenKind::Identifier(ref id) = token.kind {
+            if id == name {
+                return Some(token.span);
+            }
+        }
+    }
+    None
+}
+
+/// Format function signature for display
+fn format_function_signature(func: &ast::nodes::Function) -> String {
+    let params: Vec<String> = func.params.iter().map(|p| {
+        let ty_str = p.ty.as_ref().map(|t| format!(": {}", format_type(t))).unwrap_or_default();
+        format!("{}{}", p.name, ty_str)
+    }).collect();
+    let ret_ty = func.ret_ty.as_ref().map(|t| format!(" -> {}", format_type(t))).unwrap_or_default();
+    format!("def {}({}){}", func.name, params.join(", "), ret_ty)
+}
+
+/// Format type for display
+fn format_type(ty: &ast::nodes::Type) -> String {
+    match ty {
+        ast::nodes::Type::Simple(name) => name.clone(),
+        ast::nodes::Type::Generic { base, args } => {
+            let args_str: Vec<String> = args.iter().map(format_type).collect();
+            format!("{}<{}>", base, args_str.join(", "))
+        }
+    }
+}
+
+/// Infer type hint from expression (basic)
+fn infer_type_from_expr(_expr: &Expr) -> Option<String> {
+    None // Could be enhanced with type inference
 }
 
 /// Compute diagnostics and build symbol table from source text
@@ -302,7 +973,7 @@ fn compute_lsp_diagnostics_and_symbols(text: &str) -> (Vec<Diagnostic>, SymbolTa
         Ok(tokens) => match parse(&tokens) {
             Ok(program) => {
                 // Build symbol table from the parsed program
-                let symbol_table = build_symbol_table(&program);
+                let symbol_table = build_symbol_table(&program, &tokens, text);
                 
                 let diagnostics = {
                     let mut checker = TypeChecker::new().with_registry(SymbolRegistry::global());
@@ -317,16 +988,16 @@ fn compute_lsp_diagnostics_and_symbols(text: &str) -> (Vec<Diagnostic>, SymbolTa
             }
             Err(errors) => {
                 let diagnostics = errors
-                    .into_iter()
-                    .map(|err| otter_diag_to_lsp(&err.to_diagnostic(source_id), text))
+                .into_iter()
+                .map(|err| otter_diag_to_lsp(&err.to_diagnostic(source_id), text))
                     .collect();
                 (diagnostics, SymbolTable::new())
             }
         },
         Err(errors) => {
             let diagnostics = errors
-                .into_iter()
-                .map(|err| otter_diag_to_lsp(&lexer_error_to_diag(source_id, &err), text))
+            .into_iter()
+            .map(|err| otter_diag_to_lsp(&lexer_error_to_diag(source_id, &err), text))
                 .collect();
             (diagnostics, SymbolTable::new())
         }
@@ -483,20 +1154,20 @@ for i in [1, 2, 3]:
         match tokenize(test_code) {
             Ok(tokens) => match parse(&tokens) {
                 Ok(program) => {
-                    let symbol_table = build_symbol_table(&program);
+                    let symbol_table = build_symbol_table(&program, &tokens, test_code);
                     
-                    assert!(symbol_table.variables.contains_key("x"), "Variable 'x' should be in symbol table");
-                    assert!(symbol_table.variables.contains_key("y"), "Variable 'y' should be in symbol table");
-                    assert!(symbol_table.variables.contains_key("result"), "Variable 'result' should be in symbol table");
-                    assert!(symbol_table.variables.contains_key("sum"), "Variable 'sum' should be in symbol table");
-                    assert!(symbol_table.variables.contains_key("doubled"), "Variable 'doubled' should be in symbol table");
-                    assert!(symbol_table.parameters.contains_key("a"), "Parameter 'a' should be in symbol table");
-                    assert!(symbol_table.parameters.contains_key("b"), "Parameter 'b' should be in symbol table");
-                    assert!(symbol_table.variables.contains_key("i"), "Loop variable 'i' should be in symbol table");
+                    assert!(symbol_table.find_definition("x").is_some(), "Variable 'x' should be in symbol table");
+                    assert!(symbol_table.find_definition("y").is_some(), "Variable 'y' should be in symbol table");
+                    assert!(symbol_table.find_definition("result").is_some(), "Variable 'result' should be in symbol table");
+                    assert!(symbol_table.find_definition("sum").is_some(), "Variable 'sum' should be in symbol table");
+                    assert!(symbol_table.find_definition("doubled").is_some(), "Variable 'doubled' should be in symbol table");
+                    assert!(symbol_table.find_definition("a").is_some(), "Parameter 'a' should be in symbol table");
+                    assert!(symbol_table.find_definition("b").is_some(), "Parameter 'b' should be in symbol table");
+                    assert!(symbol_table.find_definition("i").is_some(), "Loop variable 'i' should be in symbol table");
                     
                     println!("✓ All symbol table tests passed!");
-                    println!("  Variables: {:?}", symbol_table.variables.keys().collect::<Vec<_>>());
-                    println!("  Parameters: {:?}", symbol_table.parameters.keys().collect::<Vec<_>>());
+                    let vars: Vec<_> = symbol_table.all_symbols().map(|(k, _)| k.clone()).collect();
+                    println!("  Symbols: {:?}", vars);
                 }
                 Err(errors) => {
                     panic!("Parsing failed: {:?}", errors);
@@ -515,10 +1186,10 @@ for i in [1, 2, 3]:
         match tokenize(test_code) {
             Ok(tokens) => match parse(&tokens) {
                 Ok(program) => {
-                    let symbol_table = build_symbol_table(&program);
+                    let symbol_table = build_symbol_table(&program, &tokens, test_code);
                     
-                    let x_span = symbol_table.find_definition("x");
-                    assert!(x_span.is_some(), "Should find definition for 'x'");
+                    let x_info = symbol_table.find_definition("x");
+                    assert!(x_info.is_some(), "Should find definition for 'x'");
                     
                     let y_span = symbol_table.find_definition("y");
                     assert!(y_span.is_some(), "Should find definition for 'y'");
@@ -536,3 +1207,4 @@ for i in [1, 2, 3]:
         }
     }
 }
+
