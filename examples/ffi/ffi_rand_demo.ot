@@ -1,6 +1,0 @@
-use rust:rand
-
-def main():
-    let rng = rand.rngs.thread.thread_rng()
-    print("Random number generator created")
-
