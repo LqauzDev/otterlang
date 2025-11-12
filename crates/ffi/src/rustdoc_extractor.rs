@@ -242,11 +242,14 @@ fn normalize(name: String, version: Option<String>, doc: Rustdoc) -> CrateSpec {
             continue;
         }
 
-        if !is_path_accessible(&doc, &path_segments, item_obj) {
-            continue;
-        }
 
+        let expected_params = count_expected_parameters(item_obj);
         if let Some(function_item) = extract_function(item_obj, &path_segments) {
+            if let PublicItem::Function { sig, .. } = &function_item {
+                if expected_params > 0 && sig.params.len() != expected_params {
+                    continue;
+                }
+            }
             if let PublicItem::Function { path, sig, .. } = &function_item {
                 let key = (
                     path.segments.clone(),
@@ -323,12 +326,19 @@ fn is_deprecated(item: &serde_json::Map<String, serde_json::Value>) -> bool {
                         return true;
                     }
                 }
+                if let Some(attr_str) = attr_obj.get("kind").and_then(|k| k.as_object())
+                    .and_then(|k| k.get("kind")).and_then(|k| k.as_str()) {
+                    if attr_str == "deprecated" {
+                        return true;
+                    }
+                }
             }
         }
     }
     
     if let Some(docs) = item.get("docs").and_then(|d| d.as_str()) {
-        if docs.to_lowercase().contains("deprecated") {
+        let docs_lower = docs.to_lowercase();
+        if docs_lower.contains("deprecated") || docs_lower.contains("renamed to") {
             return true;
         }
     }
@@ -336,15 +346,19 @@ fn is_deprecated(item: &serde_json::Map<String, serde_json::Value>) -> bool {
     false
 }
 
-fn is_path_accessible(
-    _doc: &Rustdoc,
-    path_segments: &[String],
-    _item: &serde_json::Map<String, serde_json::Value>,
-) -> bool {
-    if path_segments.len() < 2 {
-        return true;
+fn count_expected_parameters(item: &serde_json::Map<String, serde_json::Value>) -> usize {
+    if let Some(inner) = item.get("inner").and_then(|i| i.as_object()) {
+        if let Some(func) = inner.get("function").and_then(|f| f.as_object()) {
+            if let Some(sig) = func.get("sig").and_then(|s| s.as_object()) {
+                if let Some(decl) = sig.get("decl").and_then(|d| d.as_object()) {
+                    if let Some(inputs) = decl.get("inputs").and_then(|i| i.as_array()) {
+                        return inputs.len();
+                    }
+                }
+            }
+        }
     }
-    true
+    0
 }
 
 fn extract_function(
