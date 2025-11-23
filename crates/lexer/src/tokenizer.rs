@@ -759,7 +759,7 @@ impl LexerState {
 
         let value = unsafe { std::str::from_utf8_unchecked(&self.source[start..self.offset]) };
         let kind = match value {
-            "def" => TokenKind::Def,
+            "fn" => TokenKind::Fn,
             "lambda" => TokenKind::Lambda,
             "let" => TokenKind::Let,
             "return" => TokenKind::Return,

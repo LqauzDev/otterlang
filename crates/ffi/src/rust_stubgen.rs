@@ -202,9 +202,9 @@ impl RustStubGenerator {
                     };
                     let join_ty = rust_value_ty(&out_ty);
                     let await_expr = format!(
-                        "match rt().block_on(ffi_store::take::<tokio::task::JoinHandle<{jt}>>({{0}})) {{ Ok(v) => v, Err(_) => {def} }}",
+                        "match rt().block_on(ffi_store::take::<tokio::task::JoinHandle<{jt}>>({{0}})) {{ Ok(v) => v, Err(_) => {fn} }}",
                         jt = join_ty,
-                        def = out_ty.default_return()
+                        fn = out_ty.default_return()
                     );
                     out.push(FunctionSpec {
                         name: await_name,

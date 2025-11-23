@@ -60,7 +60,7 @@
         },
         {
           "name": "keyword.other.otterlang",
-          "match": "\\b(def|let|pub|struct|enum|type|use|as|in|and|or|not|is)\\b"
+          "match": "\\b(fn|let|pub|struct|enum|type|use|as|in|and|or|not|is)\\b"
         },
         {
           "name": "constant.language.boolean.otterlang",
@@ -92,7 +92,7 @@
       "patterns": [
         {
           "name": "meta.function.otterlang",
-          "begin": "\\b(def|pub def)\\b",
+          "begin": "\\b(fn|pub fn)\\b",
           "beginCaptures": {
             "1": {
               "name": "keyword.other.otterlang"

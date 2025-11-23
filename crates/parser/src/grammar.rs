@@ -81,7 +81,7 @@ fn identifier_parser() -> impl Parser<TokenKind, String, Error = Simple<TokenKin
 fn identifier_or_keyword_parser() -> impl Parser<TokenKind, String, Error = Simple<TokenKind>> {
     select! {
         TokenKind::Identifier(name) => name,
-        TokenKind::Def => "def".to_string(),
+        TokenKind::Fn => "fn".to_string(),
         TokenKind::Lambda => "lambda".to_string(),
         TokenKind::Return => "return".to_string(),
         TokenKind::If => "if".to_string(),
@@ -1366,7 +1366,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
 
     let function_ret_type = just(TokenKind::Arrow).ignore_then(type_parser()).or_not();
 
-    let function_keyword = just(TokenKind::Def);
+    let function_keyword = just(TokenKind::Fn);
 
     let function = pub_keyword
         .clone()
@@ -1392,7 +1392,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .boxed();
 
     //     field: Type
-    //     def method(self, ...) -> ReturnType:
+    //     fn method(self, ...) -> ReturnType:
     //         ...
     let struct_generics = || {
         identifier_parser()
@@ -1439,7 +1439,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
     // Parse struct body: fields and methods (indented)
     //     x: float
     //     y: float
-    //     def distance(self) -> float:
+    //     fn distance(self) -> float:
     //         return math.sqrt(self.x * self.x + self.y * self.y)
 
     // Field definition
@@ -1448,7 +1448,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
         .map(|field| (Some(field), None::<Node<Function>>))
         .boxed();
 
-    // Method definition (def method(self, ...) -> ReturnType: ...)
+    // Method definition (fn method(self, ...) -> ReturnType: ...)
     // Recreate parsers for method definition
     let method_function_param = identifier_parser()
         .map_with_span(Node::new)

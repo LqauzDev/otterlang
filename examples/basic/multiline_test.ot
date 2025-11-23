@@ -1,4 +1,4 @@
-def main():
+fn main():
     # Test regular \n escape sequence (already supported)
     print("Line 1\nLine 2\nLine 3")
     

@@ -42,7 +42,7 @@ cargo +nightly build --release
 
 # Create and run your first program
 cat > hello.ot << 'EOF'
-def main():
+fn main():
     print("Hello from OtterLang!")
 EOF
 
@@ -63,7 +63,7 @@ cargo +nightly build --release
 
 OtterLang features a clean, indentation-based syntax with modern language features:
 
-- **Pythonic syntax** - `def` for functions, `class` for structs, `print()` for output
+- **Pythonic syntax** - `fn` for functions, `class` for structs, `print()` for output
 - **Type system** - Static typing with type inference
 - **Enums and pattern matching** - Tagged unions with `match` expressions
 - **Exception handling** - `try/except/finally` blocks with zero-cost abstractions

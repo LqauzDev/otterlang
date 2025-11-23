@@ -1,4 +1,4 @@
-def risky_operation(value: float) -> float:
+fn risky_operation(value: float) -> float:
     if value < 0.0:
         raise "Negative values not allowed"
     if value == 0.0:
@@ -7,7 +7,7 @@ def risky_operation(value: float) -> float:
         raise "Value too large"
     return value * 2.0
 
-def main():
+fn main():
     print("Advanced Exception Handling")
     print("==========================")
 

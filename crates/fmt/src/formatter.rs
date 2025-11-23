@@ -308,7 +308,7 @@ impl Formatter {
             String::new()
         };
         format!(
-            "{}{}def {}({}){}:\n{}",
+            "{}{}fn {}({}){}:\n{}",
             self.indent(indent),
             pub_str,
             f.as_ref().name,

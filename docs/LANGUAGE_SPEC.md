@@ -1,649 +1,459 @@
 # OtterLang Language Specification
 
-This document provides a complete specification of the OtterLang programming language syntax, semantics, and features.
+This document describes the syntax and semantics implemented by the current OtterLang compiler, runtime, LSP server, and standard library. Code samples use the fully supported `fn` syntax and reflect the features shipped in this repository.
 
 ## Table of Contents
 
 1. [Lexical Structure](#lexical-structure)
-2. [Types](#types)
+2. [Type System](#type-system)
 3. [Expressions](#expressions)
 4. [Statements](#statements)
-5. [Functions](#functions)
-6. [Structs and Classes](#structs-and-classes)
+5. [Functions and Methods](#functions-and-methods)
+6. [Structs](#structs)
 7. [Enums](#enums)
 8. [Pattern Matching](#pattern-matching)
-9. [Control Flow](#control-flow)
-10. [Error Handling](#error-handling)
-11. [Concurrency](#concurrency)
-12. [Modules](#modules)
-13. [Standard Library](#standard-library)
+9. [Modules and Visibility](#modules-and-visibility)
+10. [Concurrency Primitives](#concurrency-primitives)
+11. [Error Handling](#error-handling)
+12. [Standard Library Overview](#standard-library-overview)
+13. [Grammar Summary](#grammar-summary)
+14. [Semantics and Implementation Notes](#semantics-and-implementation-notes)
 
 ## Lexical Structure
 
 ### Comments
 
-```otter
-# Single-line comment
+OtterLang uses `#` for comments. Block comments are written as multiple single-line comments.
 
-# Multi-line comments
-# are written as multiple
-# single-line comments
+```otter
+# This is a line comment
+# Multiline comments are just repeated hash-prefixed lines
 ```
+
+### Whitespace and Indentation
+
+OtterLang is indentation-sensitive. A colon (`:`) ends phrase headers such as `fn`, `if`, `for`, `match case`, and `try`. A newline plus an increased indentation level introduces a block. When the indentation level decreases, the previous block ends. Tabs are not permitted; use spaces consistently (the formatter emits four spaces).
 
 ### Identifiers
 
-Identifiers start with a letter or underscore, followed by letters, digits, or underscores:
-
-```otter
-valid_name
-_valid_name
-name123
-```
+Identifiers start with a letter or underscore and may contain ASCII letters, digits, or underscores. Unicode identifiers are also accepted. The standalone underscore (`_`) is treated as the wildcard identifier in patterns.
 
 ### Keywords
 
-Reserved keywords: `def`, `let`, `return`, `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `pass`, `struct`, `enum`, `match`, `case`, `use`, `pub`, `spawn`, `await`, `try`, `except`, `finally`, `raise`, `as`, `type`
+The lexer currently treats the following words as keywords and they cannot be used as user-defined identifiers:
+
+```
+fn, lambda, let, return, if, elif, else, for, while, break, continue, pass,
+in, is, not, use, from, as, pub, async, await, spawn, match, case,
+true, false, print, None, try, except, finally, raise, struct, enum,
+and, or
+```
+
+`type` is a contextual keyword: it is recognized as the start of a type-alias declaration but otherwise behaves like an identifier.
 
 ### Literals
 
-**Numbers:**
-```otter
-42          # Integer
-3.14        # Float
-1e10        # Scientific notation
-```
+- **Numbers** support underscores for readability and may be written as integers (`42`, `1_000`) or floating-point values (`3.14`, `2.0e-3`).
+- **Strings** use single or double quotes. Prefix a string with `f` to enable interpolation with `{expr}` placeholders.
+- **Booleans** are `true` and `false`.
+- **None/Unit** literals are written as `None`/`none` or as the empty tuple `()`.
 
-**Strings:**
-```otter
-"hello"     # String literal
-'world'     # String literal (single quotes)
-f"value: {x}"  # F-string (interpolated)
-```
+## Type System
 
-**Booleans:**
-```otter
-true
-false
-```
+OtterLang uses a static type system with inference. Type annotations are optional but recommended for public APIs.
 
-**None/Unit:**
-```otter
-nil         # None value
-```
+### Built-in Types
 
-## Types
+- `int`/`i64` – 64-bit signed integer
+- `i32` – 32-bit signed integer
+- `float`/`f64` – 64-bit floating point
+- `bool` – boolean
+- `str`/`string` – UTF-8 strings (both spellings are accepted throughout the standard library)
+- `unit`/`None` – unit type; represents the absence of a value
+- `list<T>` – homogenous dynamic array
+- `dict<K, V>` – key/value map
 
-### Primitive Types
-
-- `int` - 64-bit signed integer
-- `float` - 64-bit floating point
-- `bool` - Boolean
-- `string` - String
-- `unit` - Unit type (no value)
+Any identifier not in this list is treated as a type name. You can use that behavior to describe custom types (`User`, `Channel<string>`, `TaskHandle`) or to opt out of static checking with a conventional `any` type alias.
 
 ### Type Annotations
 
+Annotate bindings, parameters, and return types with a colon:
+
 ```otter
-let x: int = 42
 let name: string = "Otter"
-let pi: float = 3.14
+let values: list<int> = [1, 2, 3]
+fn len_text(text: string) -> int:
+    return len(text)
 ```
 
-### Generic Types
+### Generics
+
+Functions, structs, enums, and type aliases support generic parameters:
 
 ```otter
-let numbers: [int] = [1, 2, 3]
-let mapping: {string: int} = {"a": 1, "b": 2}
-let maybe: Option<int> = Option.Some(42)
-```
-
-### Type Aliases
-
-```otter
-type ID = int
-type Name = string
-type UserID = ID
-```
-
-## Expressions
-
-### Arithmetic
-
-```otter
-1 + 2       # Addition
-3 - 1       # Subtraction
-2 * 4       # Multiplication
-8 / 2       # Division
-5 % 3       # Modulo
-2 ** 3      # Exponentiation
-```
-
-### Comparison
-
-```otter
-a == b      # Equality
-a != b      # Inequality
-a < b       # Less than
-a > b       # Greater than
-a <= b      # Less than or equal
-a >= b      # Greater than or equal
-```
-
-### Logical
-
-```otter
-a and b     # Logical AND
-a or b      # Logical OR
-not a       # Logical NOT
-```
-
-### Member Access
-
-```otter
-obj.field
-module.function
-Option.Some
-```
-
-### Function Calls
-
-```otter
-function(arg1, arg2)
-obj.method(arg)
-```
-
-### F-Strings
-
-```otter
-f"Hello, {name}!"
-f"Value: {x}, Sum: {a + b}"
-```
-
-## Statements
-
-### Variable Declaration
-
-```otter
-let x = 42
-let name: string = "Otter"
-let y: int  # Uninitialized (must be assigned before use)
-```
-
-### Assignment
-
-```otter
-x = 10
-name = "New Name"
-```
-
-### Return
-
-```otter
-return value
-return  # Returns unit
-```
-
-### Expression Statements
-
-Any expression can be used as a statement:
-
-```otter
-print("Hello")
-x + 1  # Evaluated but result discarded
-```
-
-## Functions
-
-### Function Definition
-
-```otter
-def greet(name: string) -> string:
-    return f"Hello, {name}!"
-```
-
-### Function with Default Parameters
-
-```otter
-def greet(name: string, greeting: string = "Hello") -> string:
-    return f"{greeting}, {name}!"
-```
-
-### Generic Functions
-
-```otter
-def first<T>(items: [T]) -> T:
+fn first<T>(items: list<T>) -> T:
     return items[0]
-```
 
-### Public Functions
-
-```otter
-pub def exported_function():
-    # Can be imported by other modules
-    pass
-```
-
-## Structs and Classes
-
-### Definition
-
-```otter
-struct Point:
-    x: float
-    y: float
-```
-
-### Instantiation
-
-```otter
-let p = Point{x: 1.0, y: 2.0}
-let origin = Point{x: 0.0, y: 0.0}
-```
-
-### Methods
-
-```otter
-struct Point:
-    x: float
-    y: float
-
-    def distance(self) -> float:
-        return math.sqrt(self.x * self.x + self.y * self.y)
-```
-
-### Generic Structs
-
-```otter
 struct Pair<T, U>:
     first: T
     second: U
 ```
 
-## Enums
+### Type Aliases
 
-### Definition
+Define aliases with the contextual `type` keyword:
 
 ```otter
-enum Option<T>:
-    Some: (T)
-    None
+pub type UserId = int
+pub type Response<T> = Result<T, Error>
+```
 
-enum Result<T, E>:
+## Expressions
+
+### Arithmetic and Comparison
+
+OtterLang supports `+`, `-`, `*`, `/`, and `%`. Comparison operators include `==`, `!=`, `<`, `>`, `<=`, `>=`, `is`, and `is not`.
+
+```otter
+let normalized = (value - min) / (max - min)
+if count is not None and count > 0:
+    print("ready")
+```
+
+### Logical Operators
+
+Use `and`, `or`, and `not` for boolean logic.
+
+```otter
+if is_ready and not has_failed:
+    proceed()
+```
+
+### Function and Method Calls
+
+Call syntax uses parentheses. Methods are regular functions stored inside structs, so you call them with the dot operator: `point.distance()`.
+
+### Member Access and Namespaces
+
+Use `object.field` or `Module.symbol`. Enum variants use the same syntax: `Option.Some(value)`.
+
+### Struct Instantiation
+
+Structs use keyword-style arguments:
+
+```otter
+let origin = Point(x=0.0, y=0.0)
+```
+
+### Collection Literals
+
+```otter
+let numbers = [1, 2, 3]
+let mapping = {"a": 1, "b": 2}
+```
+
+### Comprehensions
+
+Lists and dictionaries support comprehension syntax with an optional `if` filter:
+
+```otter
+let squares = [x * x for x in 0..10]
+let indexed = {x: idx for idx in 0..len(items) if items[idx] != None}
+```
+
+### Range Expressions
+
+`start..end` produces a range expression. Ranges are evaluated eagerly inside `for` loops and are exclusive of `end`.
+
+```otter
+for i in 0..count:
+    println(str(i))
+```
+
+### Lambda Expressions
+
+Lambdas create anonymous functions. Bodies can be a single expression or an indented block.
+
+```otter
+let doubler = lambda (value: int) -> int: value * 2
+let handler = lambda (event):
+    if event.kind == "update":
+        process(event)
+```
+
+### Await and Spawn
+
+`await` consumes the result of an asynchronous computation. `spawn` starts an asynchronous computation and returns a task handle.
+
+```otter
+let task = spawn fetch_data(url)
+let payload = await task
+```
+
+### F-Strings and Interpolation
+
+Prefix strings with `f` to embed arbitrary expressions:
+
+```otter
+let summary = f"Processed {len(items)} items in {duration_ms}ms"
+```
+
+## Statements
+
+### Variable Declarations and Assignment
+
+Use `let` to introduce bindings. `pub let` exports a binding from the current module.
+
+```otter
+let total = 0.0
+pub let version: string = runtime.version()
+```
+
+Simple reassignments omit `let`:
+
+```otter
+total = total + chunk
+items += [extra]
+```
+
+### Expression Statements
+
+Any expression can appear as a statement. This is how function calls and comprehensions that produce side effects are executed.
+
+### Control Flow
+
+#### `if` / `elif` / `else`
+
+```otter
+if size == 0:
+    return
+elif size < 10:
+    print("small batch")
+else:
+    print("large batch")
+```
+
+#### `while`
+
+```otter
+while remaining > 0:
+    remaining -= 1
+```
+
+#### `for`
+
+`for` iterates over any iterable expression. Ranges are the easiest way to create numeric loops.
+
+```otter
+for user in users:
+    println(user.name)
+```
+
+#### `match`
+
+`match` dispatches on patterns. Guards (`case ... if ...`) are not supported in the current grammar.
+
+```otter
+let description = match result:
+    case Result.Ok(value):
+        f"ok: {value}"
+    case Result.Err(error):
+        f"error: {error}"
+```
+
+#### `try` / `except` / `else` / `finally`
+
+```otter
+try:
+    risky_call()
+except Error as err:
+    log(err)
+else:
+    println("all good")
+finally:
+    cleanup()
+```
+
+#### `raise`
+
+`raise` rethrows the current error when no argument is supplied, or raises the supplied expression.
+
+### Loop Control
+
+Use `break`, `continue`, and `pass` inside loops or placeholders. `return` exits the current function.
+
+## Functions and Methods
+
+Functions use the following syntax:
+
+```otter
+pub fn greet(name: string, greeting: string = "Hello") -> string:
+    return f"{greeting}, {name}!"
+```
+
+- Parameters can have default values. Once a parameter declares a default, all subsequent parameters must also declare defaults.
+- Functions may declare type parameters: `fn parse<T>(text: string) -> T`.
+- Nested functions are allowed.
+- Method definitions live inside `struct` blocks and take `self` explicitly as the first parameter.
+
+Top-level code may only contain function definitions, `let` statements, struct/enum/type declarations, `use`/`pub use` statements, and expression statements. Other control-flow constructs must appear inside functions.
+
+## Structs
+
+Structs group named fields and optional methods.
+
+```otter
+pub struct Point:
+    x: float
+    y: float
+
+    fn distance(self) -> float:
+        return math.sqrt(self.x * self.x + self.y * self.y)
+```
+
+Instantiate structs with keyword arguments: `Point(x=3.0, y=4.0)`.
+
+Struct definitions can declare generics: `struct Box<T>:`.
+
+## Enums
+
+Enums define tagged unions. Variants either carry payloads or act as unit variants.
+
+```otter
+pub enum Result<T, E>:
     Ok: (T)
     Err: (E)
 ```
 
-### Enum Constructors
-
-```otter
-let some_value = Option.Some(42)
-let none_value = Option.None
-let ok_result = Result.Ok(3.14)
-let err_result = Result.Err("error message")
-```
-
-### Generic Enums
-
-```otter
-enum Maybe<T>:
-    Just: (T)
-    Nothing
-```
+Construct variants via `Result.Ok(value)`/`Result.Err(error)` and pattern match on them in `match` expressions.
 
 ## Pattern Matching
 
-### Match Expression
+Patterns supported by the parser and type checker:
+
+- `_` – wildcard
+- `identifier` – binds the value
+- Literals – match exact values
+- Enum variants – `Option.Some(value)`
+- Struct destructuring – `Point{x, y}` (optional nested patterns per field)
+- Array/list patterns – `[head, ..rest]`
+
+Patterns appear in `match case` headers and in destructuring `let` bindings inside match arms.
+
+## Modules and Visibility
+
+Each `.ot` file defines a module. Items are private by default. Mark functions, structs, enums, `let` bindings, and type aliases with `pub` to export them. The compiler supports two import forms:
 
 ```otter
-let result = match value:
-    case Option.Some(x):
-        f"Got value: {x}"
-    case Option.None:
-        "No value"
+use std/io as io
+use math, std/time as time
+
+pub use core.Option
+pub use math.sqrt as square_root
 ```
 
-### Pattern Types
+Module paths consist of segments separated by `/` or `:` (`use std/io`) and may start with `.` or `..` for relative imports. Transparent Rust FFI uses the same mechanism (`use rust:serde/json`).
 
-**Identifier Pattern:**
-```otter
-case x:
-    # Binds entire value to x
-```
+`pub use` statements re-export items or entire modules. `pub use math` re-exports everything that `math` already exposes as `pub`.
 
-**Wildcard Pattern:**
-```otter
-case _:
-    # Matches anything, binds nothing
-```
+## Concurrency Primitives
 
-**Enum Variant Pattern:**
-```otter
-case Option.Some(value):
-    # Matches Some variant, binds payload to value
-case Option.None:
-    # Matches None variant
-```
+OtterLang currently ships two levels of concurrency support:
 
-**Literal Pattern:**
-```otter
-case 42:
-    # Matches specific literal value
-case "hello":
-    # Matches string literal
-```
+1. **Language-level operators**: `spawn fn_call(...)` runs a function asynchronously and returns a task handle. `await handle` waits for completion and yields the underlying result.
+2. **Standard library**: `stdlib/otter/task.ot` exposes helpers for spawning tasks, joining/detaching them, sleeping, working with typed channels, and building `select` statements.
 
-### Match Guards
+Example:
 
 ```otter
-match x:
-    case n if n > 0:
-        "positive"
-    case n if n < 0:
-        "negative"
-    case _:
-        "zero"
-```
-
-## Control Flow
-
-### If Statements
-
-```otter
-if condition:
-    # then branch
-elif other_condition:
-    # elif branch
-else:
-    # else branch
-```
-
-### For Loops
-
-```otter
-for i in 0..10:
-    print(i)
-
-for item in items:
-    print(item)
-```
-
-### While Loops
-
-```otter
-while condition:
-    # loop body
-    if should_break:
-        break
-    if should_continue:
-        continue
-```
-
-### Break and Continue
-
-```otter
-while True:
-    if condition:
-        break  # Exit loop
-    if skip:
-        continue  # Skip to next iteration
+let worker = spawn process_batch(batch)
+let snapshot = spawn fetch_snapshot()
+let batch_result = await worker
+let snapshot_result = await snapshot
 ```
 
 ## Error Handling
 
-### Try-Except-Finally
+- `try/except/else/finally` wraps statements, as shown earlier.
+- `raise` rethrows errors or raises custom values.
+- `panic(message)` is a built-in for unrecoverable failures.
+- `Result<T, E>` and `Option<T>` live in `stdlib/otter/core.ot` and provide algebraic error handling.
 
-```otter
-try:
-    # code that might raise
-    result = risky_operation()
-except Error as e:
-    # handle error
-    print(f"Error: {e}")
-finally:
-    # cleanup code (always executes)
-    cleanup()
-```
+## Standard Library Overview
 
-### Raise
+The `stdlib/otter` directory contains the modules shipped with the compiler. Import them with `use` statements.
 
-```otter
-raise "Error message"
-raise ValueError("Invalid input")
-```
+- **builtins** – fundamental helpers such as `len`, `cap`, list/map mutation, `panic`, `recover`, `type_of`, `append`, `range`, and structured error utilities (`try_func`, `select`, `defer`).
+- **core** – definitions of `Option<T>` and `Result<T, E>`.
+- **fmt** – lightweight wrappers around standard output (`print`, `println`, `eprintln`).
+- **fs** – filesystem helpers: `exists`, `mkdir`, `remove`, `list_dir`, file IO shortcuts, etc.
+- **http** – convenience wrappers for HTTP verbs built on the runtime networking stack.
+- **io** – file IO plus buffered IO helpers.
+- **json** – encoding/decoding JSON strings, pretty printing, and validation.
+- **math** – numeric algorithms (`sqrt`, `pow`, `exp`, `clamp`, `randf`, etc.).
+- **net** – TCP-style networking primitives plus HTTP response helpers.
+- **rand** – RNG seeding plus integer/float random generators.
+- **runtime** – introspection helpers (`gos`, `cpu_count`, `memory`, `stats`, `version`).
+- **task** – task spawning, sleeping, typed channels, and select utilities.
+- **time** – timestamps, sleeping, timers, formatting, and parsing.
 
-### Exception Types
-
-```otter
-try:
-    # code
-except ValueError:
-    # handle ValueError
-except TypeError:
-    # handle TypeError
-except Error:
-    # handle any error
-```
-
-## Concurrency
-
-### Spawn
-
-```otter
-let task = spawn:
-    return compute_heavy_task()
-
-let result = await task
-```
-
-### Await
-
-```otter
-let task1 = spawn: compute_a()
-let task2 = spawn: compute_b()
-
-let result1 = await task1
-let result2 = await task2
-```
-
-## Modules
-
-### Import
-
-```otter
-use math
-use std.io as io
-use core
-```
-
-### Module Definition
-
-```otter
-# mymodule.ot
-pub def public_function():
-    return "accessible"
-
-def private_function():
-    return "not accessible"
-```
-
-### Re-exports
-
-Re-exports allow modules to re-export items from other modules, enabling facade patterns and cleaner public APIs.
-
-```otter
-# Re-export specific items
-pub use math.sqrt
-pub use math.sin as sine
-
-# Re-export all public items from a module
-pub use math
-```
-
-**Re-exporting specific items:**
-```otter
-# math.ot
-pub def sqrt(x: float) -> float:
-    # ... implementation
-
-# mymodule.ot
-pub use math.sqrt  # Re-export sqrt from math module
-```
-
-**Re-exporting with rename:**
-```otter
-# mymodule.ot
-pub use math.sin as sine  # Re-export sin as sine
-```
-
-**Re-exporting all items:**
-```otter
-# mymodule.ot
-pub use math  # Re-export all public items from math
-```
-
-Re-exports must reference items that are actually public in the source module. Re-export chains are supported.
-
-### Standard Library Modules
-
-- `core` - Core types and functions (Option, Result)
-- `math` - Mathematical functions
-- `std.io` - Input/output functions
-- `std.time` - Time functions
-
-## Standard Library
-
-### Built-in Functions
-
-**`print(message: string) -> unit`**
-Prints a message to standard output.
-
-**`println(message: string) -> unit`**
-Prints a message to standard output followed by a newline.
-
-**`println() -> unit`**
-Prints a newline to standard output.
-
-**`eprintln(message: string) -> unit`**
-Prints a message to standard error.
-
-**`str(value: any) -> string`**
-Converts any value to its string representation.
-
-**`len(collection) -> int`**
-Returns the length of a collection.
-
-### Collections
-
-**Lists:**
-```otter
-let items = [1, 2, 3]
-let first = items[0]
-items.append(4)
-```
-
-**Dictionaries:**
-```otter
-let map = {"key": "value"}
-let value = map["key"]
-map["new"] = "entry"
-```
-
-### Core Enums
-
-**Option<T>:**
-```otter
-enum Option<T>:
-    Some: (T)
-    None
-```
-
-**Result<T, E>:**
-```otter
-enum Result<T, E>:
-    Ok: (T)
-    Err: (E)
-```
+Each module is pure OtterLang code and may be used as a reference for idiomatic syntax.
 
 ## Grammar Summary
 
-### Program Structure
+The grammar below omits whitespace and indentation management for brevity.
 
 ```
-program := (statement | function | struct | enum | type_alias)*
+program       := (use_stmt | pub_use_stmt | type_alias | struct_def | enum_def | function | let_stmt | statement)*
+function      := [pub] fn identifier ["<" type_params ">"] "(" params ")" ["->" type] ":" block
+params        := param ("," param)*
+param         := identifier [":" type] ["=" expr]
+struct_def    := [pub] struct identifier ["<" type_params ">"] ":" newline indent struct_body dedent
+enum_def      := [pub] enum identifier ["<" type_params ">"] ":" newline indent enum_variant+ dedent
+ type_alias   := [pub] type identifier ["<" type_params ">"] "=" type
+
+statement     := let_stmt
+               | assignment_stmt
+               | augmented_assignment
+               | return_stmt
+               | break_stmt
+               | continue_stmt
+               | pass_stmt
+               | if_stmt
+               | while_stmt
+               | for_stmt
+               | try_stmt
+               | match_expr
+               | expr_stmt
+
+expr          := lambda_expr
+               | await_expr
+               | spawn_expr
+               | range_expr
+               | comprehension
+               | literal
+               | identifier
+               | struct_init
+               | dict_literal
+               | list_literal
+               | call_expr
+               | member_expr
+               | unary_expr
+               | binary_expr
+
+pattern       := "_"
+               | literal
+               | identifier
+               | enum_pattern
+               | struct_pattern
+               | list_pattern
 ```
 
-### Function Definition
+## Semantics and Implementation Notes
 
-```
-function := [pub] def identifier [<type_params>] (params) [-> type] : block
-params := param ("," param)*
-param := identifier : type [= default_expr]
-```
-
-### Statement
-
-```
-statement := let identifier [: type] [= expr]
-           | assignment
-           | return [expr]
-           | if_stmt
-           | for_stmt
-           | while_stmt
-           | try_stmt
-           | expr
-```
-
-### Expression
-
-```
-expr := literal
-      | identifier
-      | expr binop expr
-      | unop expr
-      | expr.member
-      | expr(args)
-      | match expr : (case pattern [if guard] : expr)+
-      | f_string
-```
-
-### Pattern
-
-```
-pattern := identifier
-         | _
-         | literal
-         | enum_name.variant (pattern*)
-         | struct_name {field: pattern*}
-         | [pattern*]
-```
-
-## Semantics
-
-### Type System
-
-OtterLang uses a static type system with type inference. Types are checked at compile time.
-
-### Evaluation Order
-
-Expressions are evaluated left-to-right. Function arguments are evaluated before the function is called.
-
-### Scoping
-
-Variables are scoped to the block in which they are declared. Inner scopes can shadow outer scopes.
-
-### Memory Management
-
-OtterLang uses automatic memory management. Values are reference-counted, and memory is freed when no longer needed.
-
-## Implementation Notes
-
-- OtterLang compiles to LLVM IR, which is then compiled to native binaries
-- The language is indentation-sensitive (Python-style)
-- All numbers are represented as 64-bit floats internally, but can be annotated as integers
-- Enums are encoded with variant tags in the upper 32 bits and payloads in the lower 32 bits of an i64 value
-
-## See Also
-
-- [Tutorials](./TUTORIALS.md) - Step-by-step guides
-- [API Reference](./API_REFERENCE.md) - Standard library documentation
+- **Type Checking** – Static type checking with inference is performed before code generation. Generic parameters default to unconstrained type variables.
+- **Evaluation Order** – Expressions evaluate left-to-right. Function arguments are evaluated before the call.
+- **Memory Management** – The runtime manages memory automatically using reference counting and runtime support utilities in `runtime/`.
+- **Code Generation** – The `otter` binary can target LLVM or Cranelift backends. Both backends eventually emit machine code to run programs natively.
+- **Tooling** – The repository ships a formatter, language server, REPL, and VS Code syntax highlighter that all understand the syntax described in this document.
 

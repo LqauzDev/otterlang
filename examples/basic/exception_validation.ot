@@ -1,4 +1,4 @@
-def validate_age(age_str: str) -> float:
+fn validate_age(age_str: str) -> float:
     if len(age_str) == 0:
         raise "Age is required"
     if age_str == "abc":
@@ -8,7 +8,7 @@ def validate_age(age_str: str) -> float:
         raise "Must be 18 or older"
     return age
 
-def validate_user(name: str, email: str, age_str: str) -> str:
+fn validate_user(name: str, email: str, age_str: str) -> str:
     if len(name) < 2:
         raise "Name must be at least 2 characters"
     # if not email.contains("@"):
@@ -16,7 +16,7 @@ def validate_user(name: str, email: str, age_str: str) -> str:
     let age = validate_age(age_str)
     return f"{name} validated"
 
-def process_users() -> List:
+fn process_users() -> List:
     let valid_users = []
     try:
         let result = validate_user("Alice", "alice@example.com", "25")
@@ -36,13 +36,13 @@ def process_users() -> List:
         print("Processed user: Bob")
     return valid_users
 
-def safe_api_call(endpoint: str, should_fail: bool) -> str:
+fn safe_api_call(endpoint: str, should_fail: bool) -> str:
     print(f"Calling API: {endpoint}")
     if should_fail:
         raise "API call failed"
     return f"Response from {endpoint}"
 
-def api_processing_demo():
+fn api_processing_demo():
     print("API Processing with Exception Handling")
     print("=====================================")
     try:
@@ -64,7 +64,7 @@ def api_processing_demo():
     finally:
         print("✓ Completed API call")
 
-def main():
+fn main():
     print("Exception Handling - Data Validation & APIs")
     print("==========================================")
     let valid_users = process_users()

@@ -26,7 +26,7 @@ See the main [README](../README.md) for installation instructions.
 Create a file `hello.ot`:
 
 ```otter
-def main():
+fn main():
     print("Hello, World!")
 ```
 
@@ -41,7 +41,7 @@ otter run hello.ot
 ### Basic Types
 
 ```otter
-def main():
+fn main():
     # Integers
     x = 42
     
@@ -64,7 +64,7 @@ def main():
 ### Type Annotations
 
 ```otter
-def main():
+fn main():
     x: int = 42
     name: string = "Otter"
 ```
@@ -74,10 +74,10 @@ def main():
 ### Basic Functions
 
 ```otter
-def greet(name: string) -> string:
+fn greet(name: string) -> string:
     return f"Hello, {name}!"
 
-def main():
+fn main():
     message = greet("World")
     print(message)
 ```
@@ -85,10 +85,10 @@ def main():
 ### Multiple Parameters
 
 ```otter
-def add(x: int, y: int) -> int:
+fn add(x: int, y: int) -> int:
     return x + y
 
-def main():
+fn main():
     result = add(10, 20)
     print(f"Result: {result}")
 ```
@@ -98,7 +98,7 @@ def main():
 ### If Statements
 
 ```otter
-def check_age(age: int):
+fn check_age(age: int):
     if age >= 18:
         print("Adult")
     elif age >= 13:
@@ -110,7 +110,7 @@ def check_age(age: int):
 ### Match Expressions
 
 ```otter
-def day_name(day: int) -> string:
+fn day_name(day: int) -> string:
     return match day:
         case 1:
             "Monday"
@@ -125,7 +125,7 @@ def day_name(day: int) -> string:
 ### Loops
 
 ```otter
-def main():
+fn main():
     # While loop
     mut i = 0
     while i < 10:
@@ -142,7 +142,7 @@ def main():
 ### Arrays
 
 ```otter
-def main():
+fn main():
     numbers = [1, 2, 3, 4, 5]
     
     # Access elements
@@ -156,7 +156,7 @@ def main():
 ### Dictionaries
 
 ```otter
-def main():
+fn main():
     person = {"name": "Otter", "age": 42}
     
     # Access values
@@ -173,7 +173,7 @@ struct Point:
     x: float
     y: float
 
-def main():
+fn main():
     p = Point{x: 1.0, y: 2.0}
     print(f"Point: ({p.x}, {p.y})")
 ```
@@ -184,7 +184,7 @@ def main():
 type ID = int
 type Name = string
 
-def create_user(id: ID, name: Name):
+fn create_user(id: ID, name: Name):
     # ...
 ```
 
@@ -193,7 +193,7 @@ def create_user(id: ID, name: Name):
 ### Spawning Tasks
 
 ```otter
-def main():
+fn main():
     task1 = spawn:
         return compute_something()
     
@@ -211,12 +211,12 @@ def main():
 OtterLang uses `nil` for error handling:
 
 ```otter
-def safe_divide(a: float, b: float) -> float | nil:
+fn safe_divide(a: float, b: float) -> float | nil:
     if b == 0:
         return nil
     return a / b
 
-def main():
+fn main():
     result = safe_divide(10, 2)
     if result != nil:
         print(f"Result: {result}")
@@ -229,10 +229,10 @@ def main():
 ### Generics
 
 ```otter
-def first<T>(items: [T]) -> T:
+fn first<T>(items: [T]) -> T:
     return items[0]
 
-def main():
+fn main():
     numbers = [1, 2, 3]
     first_num = first(numbers)
     
@@ -243,7 +243,7 @@ def main():
 ### F-Strings
 
 ```otter
-def main():
+fn main():
     name = "Otter"
     age = 42
     message = f"Hello, {name}! You are {age} years old."
@@ -255,7 +255,7 @@ def main():
 Convert values to strings with the built-in `str()` helper (`stringify()` is kept only for backward compatibility):
 
 ```otter
-def main():
+fn main():
     num = 42
     num_str = str(num)  # "42"
     print(f"Number as string: {num_str}")
@@ -267,16 +267,16 @@ Create modules to organize your code:
 
 ```otter
 # math_utils.ot
-pub def add(a: float, b: float) -> float:
+pub fn add(a: float, b: float) -> float:
     return a + b
 
-pub def multiply(a: float, b: float) -> float:
+pub fn multiply(a: float, b: float) -> float:
     return a * b
 
 # main.ot
 use math_utils
 
-def main():
+fn main():
     result = math_utils.add(5, 3)
     print(result)
 ```
@@ -285,11 +285,11 @@ def main():
 
 ```otter
 # math.ot
-pub def sqrt(x: float) -> float:
+pub fn sqrt(x: float) -> float:
     # ... implementation
     pass
 
-pub def sin(x: float) -> float:
+pub fn sin(x: float) -> float:
     # ... implementation
     pass
 
@@ -301,7 +301,7 @@ pub use math.sin as sine
 # main.ot
 use my_math
 
-def main():
+fn main():
     result = my_math.sqrt(16)  # Re-exported from math
     sine_val = my_math.sine(0.5)  # Re-exported with rename
 ```
@@ -317,7 +317,7 @@ pub use time
 # Users can import everything from api
 use api
 
-def main():
+fn main():
     api.sqrt(16)
     api.print("Hello")
 ```

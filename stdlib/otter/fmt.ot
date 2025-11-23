@@ -1,8 +1,8 @@
-def print(msg: str):
+fn print(msg: str):
     io.print(msg)
 
-def println(msg: str):
+fn println(msg: str):
     io.println(msg)
 
-def eprintln(msg: str):
+fn eprintln(msg: str):
     io.eprintln(msg)

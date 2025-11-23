@@ -556,7 +556,7 @@ impl LanguageServer for Backend {
         items.push(CompletionItem {
             label: "print".into(),
             kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("def print(message: string)".into()),
+            detail: Some("fn print(message: string)".into()),
             ..Default::default()
         });
 
@@ -1038,7 +1038,7 @@ fn format_function_signature(func: &Function) -> String {
         .as_ref()
         .map(|t| format!(" -> {}", format_type(t.as_ref())))
         .unwrap_or_default();
-    format!("def {}({}){}", func.name, params.join(", "), ret_ty)
+    format!("fn {}({}){}", func.name, params.join(", "), ret_ty)
 }
 
 /// Format type for display
@@ -1204,7 +1204,7 @@ mod tests {
 let x = 10
 let y = 20
 
-def add(a, b):
+fn add(a, b):
     let result = a + b
     return result
 

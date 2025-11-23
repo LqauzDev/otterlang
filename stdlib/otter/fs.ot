@@ -1,35 +1,35 @@
-def exists(path: string) -> bool:
+fn exists(path: string) -> bool:
     return fs.exists(path) != 0
 
-def mkdir(path: string) -> bool:
+fn mkdir(path: string) -> bool:
     return fs.mkdir(path) != 0
 
-def rmdir(path: string) -> bool:
+fn rmdir(path: string) -> bool:
     return fs.rmdir(path) != 0
 
-def remove(path: string) -> bool:
+fn remove(path: string) -> bool:
     return fs.remove(path) != 0
 
-def list_dir(path: string) -> list<string>:
+fn list_dir(path: string) -> list<string>:
     return fs.list_dir(path)
 
-def is_file(path: string) -> bool:
+fn is_file(path: string) -> bool:
     return fs.is_file(path) != 0
 
-def is_dir(path: string) -> bool:
+fn is_dir(path: string) -> bool:
     return fs.is_dir(path) != 0
 
-def file_size(path: string) -> int:
+fn file_size(path: string) -> int:
     return fs.file_size(path)
 
-def read(path: string) -> string:
+fn read(path: string) -> string:
     return io.read(path)
 
-def write(path: string, data: string) -> bool:
+fn write(path: string, data: string) -> bool:
     return io.write(path, data) != 0
 
-def copy(src: string, dst: string) -> bool:
+fn copy(src: string, dst: string) -> bool:
     return io.copy(src, dst) != 0
 
-def lines(path: string) -> list<string>:
+fn lines(path: string) -> list<string>:
     return io.lines(path)

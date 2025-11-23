@@ -1,41 +1,41 @@
-def spawn_task(func) -> TaskHandle:
+fn spawn_task(func) -> TaskHandle:
     return task.spawn(func)
 
-def join(handle: TaskHandle):
+fn join(handle: TaskHandle):
     task.join(handle)
 
-def detach(handle: TaskHandle):
+fn detach(handle: TaskHandle):
     task.detach(handle)
 
-def sleep(ms: int):
+fn sleep(ms: int):
     task.sleep(ms)
 
-def channel_string() -> Channel<string>:
+fn channel_string() -> Channel<string>:
     return task.channel<string>()
 
-def channel_int() -> Channel<int>:
+fn channel_int() -> Channel<int>:
     return task.channel<int>()
 
-def channel_float() -> Channel<float>:
+fn channel_float() -> Channel<float>:
     return task.channel<float>()
 
-def send_string(chan: Channel<string>, value: string) -> bool:
+fn send_string(chan: Channel<string>, value: string) -> bool:
     return task.send_string(chan, value) != 0
 
-def send_int(chan: Channel<int>, value: int) -> bool:
+fn send_int(chan: Channel<int>, value: int) -> bool:
     return task.send_int(chan, value) != 0
 
-def send_float(chan: Channel<float>, value: float) -> bool:
+fn send_float(chan: Channel<float>, value: float) -> bool:
     return task.send_float(chan, value) != 0
 
-def recv_string(chan: Channel<string>) -> string:
+fn recv_string(chan: Channel<string>) -> string:
     return task.recv_string(chan)
 
-def recv_int(chan: Channel<int>) -> int:
+fn recv_int(chan: Channel<int>) -> int:
     return task.recv_int(chan)
 
-def recv_float(chan: Channel<float>) -> float:
+fn recv_float(chan: Channel<float>) -> float:
     return task.recv_float(chan)
 
-def close(chan: Channel<any>):
+fn close(chan: Channel<any>):
     task.close(chan)

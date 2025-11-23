@@ -1,15 +1,15 @@
-def divide(x: float, y: float) -> float:
+fn divide(x: float, y: float) -> float:
     if y == 0.0:
         raise "Division by zero"
     return x / y
 
-def safe_divide(x: float, y: float) -> float:
+fn safe_divide(x: float, y: float) -> float:
     try:
         return divide(x, y)
     except Error as e:
         pass
 
-def main():
+fn main():
     print("Exception Handling Basics")
     print("========================")
     let result1 = safe_divide(10, 2)

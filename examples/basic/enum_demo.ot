@@ -6,7 +6,7 @@ enum Result<T, E>:
     Ok: (T)
     Err: (E)
 
-def main():
+fn main():
     print("OtterLang Enum Demo")
     print("===================")
 

@@ -302,7 +302,7 @@ mod tests {
 
         fs::write(
             &math_file,
-            "pub def sqrt(x: float) -> float:\n    return x * x\n",
+            "pub fn sqrt(x: float) -> float:\n    return x * x\n",
         )
         .unwrap();
         fs::write(&facade_file, "pub use ./math.sqrt\n").unwrap();
@@ -338,7 +338,7 @@ mod tests {
 
         fs::write(
             &math_file,
-            "pub def sin(x: float) -> float:\n    return x\n",
+            "pub fn sin(x: float) -> float:\n    return x\n",
         )
         .unwrap();
         fs::write(&facade_file, "pub use ./math.sin as sine\n").unwrap();
@@ -375,7 +375,7 @@ mod tests {
 
         fs::write(
             &math_file,
-            "pub def sqrt(x: float) -> float:\n    return x * x\npub def sin(x: float) -> float:\n    return x\n",
+            "pub fn sqrt(x: float) -> float:\n    return x * x\npub fn sin(x: float) -> float:\n    return x\n",
         )
         .unwrap();
         fs::write(&facade_file, "pub use ./math\n").unwrap();
@@ -412,7 +412,7 @@ mod tests {
 
         fs::write(
             &math_file,
-            "pub def sqrt(x: float) -> float:\n    return x * x\n",
+            "pub fn sqrt(x: float) -> float:\n    return x * x\n",
         )
         .unwrap();
         fs::write(&facade_file, "pub use ./math.nonexistent\n").unwrap();

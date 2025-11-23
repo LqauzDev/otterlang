@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, PartialEq, Eq)]
 pub enum TokenKind {
     // Keywords
-    Def,
+    Fn,
     Lambda,
     Let,
     Return,
@@ -100,7 +100,7 @@ impl Hash for TokenKind {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             // Keywords - use discriminant for efficiency
-            TokenKind::Def => 0u16.hash(state),
+            TokenKind::Fn => 0u16.hash(state),
             TokenKind::Lambda => 1u16.hash(state),
             TokenKind::Let => 2u16.hash(state),
             TokenKind::Return => 3u16.hash(state),
@@ -217,7 +217,7 @@ impl TokenKind {
     pub fn name(&self) -> &'static str {
         match self {
             // Keywords
-            TokenKind::Def => "def",
+            TokenKind::Fn => "fn",
             TokenKind::Lambda => "lambda",
             TokenKind::Let => "let",
             TokenKind::Return => "return",
@@ -338,7 +338,7 @@ impl Token {
     pub fn is_keyword(&self) -> bool {
         matches!(
             self.kind,
-            TokenKind::Def
+            TokenKind::Fn
                 | TokenKind::Lambda
                 | TokenKind::Let
                 | TokenKind::Return

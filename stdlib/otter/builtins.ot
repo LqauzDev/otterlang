@@ -1,4 +1,4 @@
-def len(x: any) -> int:
+fn len(x: any) -> int:
     if type_of(x) == "string":
         return len(x)
     elif type_of(x) == "list":
@@ -8,7 +8,7 @@ def len(x: any) -> int:
     else:
         panic("len() not supported for this type")
 
-def cap(x: any) -> int:
+fn cap(x: any) -> int:
     if type_of(x) == "string":
         return cap(x)
     elif type_of(x) == "list":
@@ -16,7 +16,7 @@ def cap(x: any) -> int:
     else:
         panic("cap() not supported for this type")
 
-def append(list: List, val: any) -> bool:
+fn append(list: List, val: any) -> bool:
     if type_of(val) == "string":
         return append<list,string>(list, val) != 0
     elif type_of(val) == "int":
@@ -32,31 +32,31 @@ def append(list: List, val: any) -> bool:
     else:
         panic("append() not supported for this value type")
 
-def delete(map: Map, key: string) -> bool:
+fn delete(map: Map, key: string) -> bool:
     return delete<map>(map, key) != 0
 
-def range(start: int, end: int) -> List:
+fn range(start: int, end: int) -> List:
     return range<int>(start, end)
 
-def range_float(start: float, end: float) -> List:
+fn range_float(start: float, end: float) -> List:
     return range<float>(start, end)
 
-def enumerate(list: List) -> List:
+fn enumerate(list: List) -> List:
     return enumerate<list>(list)
 
-def list_new() -> List:
+fn list_new() -> List:
     return list.new()
 
-def list_get(list: List, index: int) -> string:
+fn list_get(list: List, index: int) -> string:
     return list.get(list, index)
 
-def map_new() -> Map:
+fn map_new() -> Map:
     return map.new()
 
-def map_get(map: Map, key: string) -> string:
+fn map_get(map: Map, key: string) -> string:
     return map.get(map, key)
 
-def map_set(map: Map, key: string, value: string) -> bool:
+fn map_set(map: Map, key: string, value: string) -> bool:
     if type_of(value) == "string":
         return map.set(map, key, value) != 0
     elif type_of(value) == "int":
@@ -72,49 +72,49 @@ def map_set(map: Map, key: string, value: string) -> bool:
     else:
         panic("map_set() not supported for this value type")
 
-def map_get_int(map: Map, key: string) -> int:
+fn map_get_int(map: Map, key: string) -> int:
     return map.get_int(map, key)
 
-def map_get_float(map: Map, key: string) -> float:
+fn map_get_float(map: Map, key: string) -> float:
     return map.get_float(map, key)
 
-def map_get_bool(map: Map, key: string) -> bool:
+fn map_get_bool(map: Map, key: string) -> bool:
     return map.get_bool(map, key)
 
-def map_get_list(map: Map, key: string) -> List:
+fn map_get_list(map: Map, key: string) -> List:
     return map.get_list(map, key)
 
-def map_get_map(map: Map, key: string) -> Map:
+fn map_get_map(map: Map, key: string) -> Map:
     return map.get_map(map, key)
 
-def panic(msg: string):
+fn panic(msg: string):
     panic(msg)
 
-def recover() -> string:
+fn recover() -> string:
     return recover()
 
-def try_func(func) -> TryHandle:
+fn try_func(func) -> TryHandle:
     return try(func)
 
-def try_result(handle: TryHandle) -> string:
+fn try_result(handle: TryHandle) -> string:
     return try.result(handle)
 
-def try_error(handle: TryHandle) -> Error:
+fn try_error(handle: TryHandle) -> Error:
     return try.error(handle)
 
-def error_message(error: Error) -> string:
+fn error_message(error: Error) -> string:
     return error.message(error)
 
-def defer_func(func):
+fn defer_func(func):
     defer(func)
 
-def select(cases: List, default: any) -> int:
+fn select(cases: List, default: any) -> int:
     return select(cases, default)
 
-def select_case(channel: int, is_send: bool, value: any) -> SelectCase:
+fn select_case(channel: int, is_send: bool, value: any) -> SelectCase:
     return select.case(channel, is_send, value)
 
-def type_of(x: any) -> string:
+fn type_of(x: any) -> string:
     if type_of(x) == "string":
         return type_of<string>(x)
     elif type_of(x) == "int":
@@ -130,10 +130,10 @@ def type_of(x: any) -> string:
     else:
         return type_of<opaque>(x)
 
-def fields(obj: any) -> string:
+fn fields(obj: any) -> string:
     return fields(obj)
 
-def str(x: any) -> string:
+fn str(x: any) -> string:
     if type_of(x) == "string":
         return stringify<string>(x)
     elif type_of(x) == "int":
@@ -149,5 +149,5 @@ def str(x: any) -> string:
     else:
         return "unknown"
 
-def stringify(x: any) -> string:
+fn stringify(x: any) -> string:
     return str(x)

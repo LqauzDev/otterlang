@@ -1,38 +1,38 @@
-def print(msg: str):
+fn print(msg: str):
     io.print(msg)
 
-def println(msg: str):
+fn println(msg: str):
     io.println(msg)
 
-def println():
+fn println():
     io.println(nil)
 
-def eprintln(msg: str):
+fn eprintln(msg: str):
     io.eprintln(msg)
 
-def read(path: string) -> string:
+fn read(path: string) -> string:
     return io.read(path)
 
-def write(path: string, data: string) -> bool:
+fn write(path: string, data: string) -> bool:
     return io.write(path, data) != 0
 
-def copy(src: string, dst: string) -> bool:
+fn copy(src: string, dst: string) -> bool:
     return io.copy(src, dst) != 0
 
-def lines(path: string) -> list<string>:
+fn lines(path: string) -> list<string>:
     return io.lines(path)
 
-def buffer(data: string = "") -> Buffer:
+fn buffer(data: string = "") -> Buffer:
     return io.buffer(data)
 
-def buffer_read(buf: Buffer, n: int) -> string:
+fn buffer_read(buf: Buffer, n: int) -> string:
     return io.buffer.read(buf, n)
 
-def buffer_write(buf: Buffer, bytes: string) -> bool:
+fn buffer_write(buf: Buffer, bytes: string) -> bool:
     return io.buffer.write(buf, bytes) != 0
 
-def buffer_clear(buf: Buffer):
+fn buffer_clear(buf: Buffer):
     io.buffer.clear(buf)
 
-def buffer_data(buf: Buffer) -> string:
+fn buffer_data(buf: Buffer) -> string:
     return io.buffer.data(buf)

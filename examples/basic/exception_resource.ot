@@ -1,4 +1,4 @@
-def simulate_operation(name: str, should_fail: bool) -> str:
+fn simulate_operation(name: str, should_fail: bool) -> str:
     print(f"Starting operation: {name}")
     if should_fail:
         raise "Operation failed"
@@ -6,7 +6,7 @@ def simulate_operation(name: str, should_fail: bool) -> str:
     print(f"Successfully completed: {result}")
     return result
 
-def demonstrate_finally():
+fn demonstrate_finally():
     print("Demonstrating Finally Blocks")
     print("===========================")
     try:
@@ -24,7 +24,7 @@ def demonstrate_finally():
     finally:
         print("Cleaning up after task2")
 
-def resource_management_demo():
+fn resource_management_demo():
     print("Resource Management with Finally")
     print("===============================")
     try:
@@ -40,7 +40,7 @@ def resource_management_demo():
         print("Releasing resource: Network")
         print("Releasing resource: File")
 
-def main():
+fn main():
     print("Exception Handling - Resource Management")
     print("========================================")
     demonstrate_finally()

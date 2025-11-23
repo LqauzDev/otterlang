@@ -1,26 +1,26 @@
-def now() -> Time:
+fn now() -> Time:
     return time.now()
 
-def sleep(ms: int):
+fn sleep(ms: int):
     time.sleep(ms)
 
-def since(t: Time) -> Duration:
+fn since(t: Time) -> Duration:
     return time.since(t)
 
-def format(t: Time, fmt: string) -> string:
+fn format(t: Time, fmt: string) -> string:
     return time.format(t, fmt)
 
-def parse(fmt: string, text: string) -> Time:
+fn parse(fmt: string, text: string) -> Time:
     return time.parse(fmt, text)
 
-def tick(ms: int) -> Channel<Time>:
+fn tick(ms: int) -> Channel<Time>:
     return time.tick(ms)
 
-def after(ms: int) -> Channel<Time>:
+fn after(ms: int) -> Channel<Time>:
     return time.after(ms)
 
-def epoch_ms(t: Time) -> int:
+fn epoch_ms(t: Time) -> int:
     return time.epoch_ms(t)
 
-def duration_ms(d: Duration) -> int:
+fn duration_ms(d: Duration) -> int:
     return duration.ms(d)
