@@ -429,9 +429,8 @@ pub fn compile_pipeline(
 
 fn ensure_output_directory(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create output directory {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
     }
 
     Ok(())

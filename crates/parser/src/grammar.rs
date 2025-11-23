@@ -697,7 +697,7 @@ fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>
             .boxed();
 
         let newline = just(TokenKind::Newline).repeated().at_least(1);
-        
+
         // Define a local statement parser for match arms to avoid circular dependency
         // This duplicates some logic from program_parser but is necessary because expr_parser
         // cannot easily access the recursive statement parser from program_parser.
@@ -712,7 +712,10 @@ fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>
                     Node::new(
                         Statement::Expr(Node::new(
                             Expr::Call {
-                                func: Box::new(Node::new(Expr::Identifier("print".to_string()), span)),
+                                func: Box::new(Node::new(
+                                    Expr::Identifier("print".to_string()),
+                                    span,
+                                )),
                                 args: vec![arg],
                             },
                             span,
@@ -776,31 +779,25 @@ fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>
                     )
                 })
                 .boxed();
-                
+
             // Simple assignment (=)
             let simple_assignment = identifier_parser()
                 .map_with_span(Node::new)
                 .then_ignore(just(TokenKind::Equals))
                 .then(expr.clone())
                 .map_with_span(|(name, expr), span| {
-                    Node::new(
-                        Statement::Assignment {
-                            name,
-                            expr,
-                        },
-                        span,
-                    )
+                    Node::new(Statement::Assignment { name, expr }, span)
                 })
                 .boxed();
 
             let pass_stmt = just(TokenKind::Pass)
                 .map_with_span(|_, span| Node::new(Statement::Pass, span))
                 .boxed();
-                
+
             let break_stmt = just(TokenKind::Break)
                 .map_with_span(|_, span| Node::new(Statement::Break, span))
                 .boxed();
-                
+
             let continue_stmt = just(TokenKind::Continue)
                 .map_with_span(|_, span| Node::new(Statement::Continue, span))
                 .boxed();
@@ -826,7 +823,8 @@ fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>
             .then_ignore(just(TokenKind::Colon))
             .then_ignore(newline.clone())
             .then(
-                match_stmt.clone()
+                match_stmt
+                    .clone()
                     .repeated()
                     .at_least(1)
                     .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))

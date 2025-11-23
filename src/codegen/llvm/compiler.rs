@@ -949,16 +949,21 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                 for stmt in &body.as_ref().statements {
                     // Stop processing if current block already has a terminator (e.g., from raise)
                     if let Some(current_block) = self.builder.get_insert_block()
-                        && current_block.get_terminator().is_some() {
+                        && current_block.get_terminator().is_some()
+                    {
                         break;
                     }
                     self.lower_statement(stmt.as_ref(), _function, ctx)?;
 
                     // Check for errors after each statement and branch to handler check if error occurred
                     if let Some(current_block) = self.builder.get_insert_block()
-                        && current_block.get_terminator().is_none() {
-                        let has_error_fn = self.declare_symbol_function("runtime.error_has_error")?;
-                        let has_error_call = self.builder.build_call(has_error_fn, &[], "check_error_after_stmt")?;
+                        && current_block.get_terminator().is_none()
+                    {
+                        let has_error_fn =
+                            self.declare_symbol_function("runtime.error_has_error")?;
+                        let has_error_call =
+                            self.builder
+                                .build_call(has_error_fn, &[], "check_error_after_stmt")?;
                         let has_error = has_error_call
                             .try_as_basic_value()
                             .left()
@@ -966,9 +971,14 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                             .into_int_value();
 
                         // Create a continue block for when no error
-                        let continue_bb = self.context.append_basic_block(_function, "try_continue");
+                        let continue_bb =
+                            self.context.append_basic_block(_function, "try_continue");
 
-                        self.builder.build_conditional_branch(has_error, handler_check_bb, continue_bb)?;
+                        self.builder.build_conditional_branch(
+                            has_error,
+                            handler_check_bb,
+                            continue_bb,
+                        )?;
                         self.builder.position_at_end(continue_bb);
                     }
                 }
@@ -1087,12 +1097,14 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
 
                 // Landingpad block - catches exceptions from invoke instructions
                 self.builder.position_at_end(landingpad_bb);
-                
+
                 // Create landingpad instruction
                 let i8_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 let i32_type = self.context.i32_type();
-                let landingpad_type = self.context.struct_type(&[i8_ptr_type.into(), i32_type.into()], false);
-                
+                let landingpad_type = self
+                    .context
+                    .struct_type(&[i8_ptr_type.into(), i32_type.into()], false);
+
                 let _landingpad = self.builder.build_landing_pad(
                     landingpad_type,
                     personality_fn,
@@ -1100,7 +1112,7 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
                     true, // This is a cleanup landingpad
                     "lpad",
                 )?;
-                
+
                 // After landingpad, branch to handler check
                 self.builder.build_unconditional_branch(handler_check_bb)?;
 
@@ -1253,7 +1265,7 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
 
                 // In this implementation, raise sets error state and execution continues
                 // Error checking in try blocks ensures proper exception handling
-                
+
                 Ok(())
             }
         }
@@ -3640,21 +3652,20 @@ impl<'ctx, 'types> Compiler<'ctx, 'types> {
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
         let i8_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-        
+
         let fn_type = i32_type.fn_type(
             &[
-                i32_type.into(),      // version
-                i32_type.into(),      // actions
-                i64_type.into(),      // exception_class
-                i8_ptr_type.into(),   // exception_object
-                i8_ptr_type.into(),   // context
+                i32_type.into(),    // version
+                i32_type.into(),    // actions
+                i64_type.into(),    // exception_class
+                i8_ptr_type.into(), // exception_object
+                i8_ptr_type.into(), // context
             ],
             false,
         );
         let function = self.module.add_function("otter_personality", fn_type, None);
         Ok(function)
     }
-
 
     fn ffi_signature_to_fn_type(&self, signature: &FfiSignature) -> Result<FunctionType<'ctx>> {
         let params = self.ffi_param_types(&signature.params)?;

@@ -1142,9 +1142,7 @@ impl TypeChecker {
                 // Module imports are handled separately
                 Ok(TypeInfo::Unit)
             }
-            Statement::PubUse { .. } => {
-                Ok(TypeInfo::Unit)
-            }
+            Statement::PubUse { .. } => Ok(TypeInfo::Unit),
             Statement::Struct { .. } => {
                 // Struct definitions are handled at the module level
                 Ok(TypeInfo::Unit)
@@ -1157,9 +1155,7 @@ impl TypeChecker {
                 // Type aliases are handled at the module level
                 Ok(TypeInfo::Unit)
             }
-            Statement::Block(block) => {
-                self.check_block(block)
-            }
+            Statement::Block(block) => self.check_block(block),
             Statement::Try {
                 body,
                 handlers,

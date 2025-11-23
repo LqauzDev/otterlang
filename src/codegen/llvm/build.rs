@@ -99,9 +99,8 @@ pub fn build_executable(
     );
 
     if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create output directory {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
     }
 
     let object_path = output.with_extension("o");
@@ -310,9 +309,8 @@ pub fn build_shared_library(
     );
 
     if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create output directory {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create output directory {}", parent.display()))?;
     }
 
     // Compile to object file with position-independent code

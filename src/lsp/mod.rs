@@ -14,11 +14,104 @@ use lexer::{LexerError, Token, tokenize};
 use parser::parse;
 use utils::errors::{Diagnostic as OtterDiagnostic, DiagnosticSeverity as OtterDiagSeverity};
 
+const BUILTIN_FUNCTION_COMPLETIONS: &[(&str, &str)] = &[
+    ("print", "fn print(message: string) -> unit"),
+    ("println", "fn println(message: string) -> unit"),
+    ("eprintln", "fn eprintln(message: string) -> unit"),
+    ("len", "fn len(collection: any) -> int"),
+    ("cap", "fn cap(value: any) -> int"),
+    ("append", "fn append(list: List, value: any) -> bool"),
+    ("delete", "fn delete(map: Map, key: string) -> bool"),
+    ("enumerate", "fn enumerate(list: List) -> List"),
+    ("list_new", "fn list_new() -> List"),
+    ("map_new", "fn map_new() -> Map"),
+    ("range", "fn range(start: int, end: int) -> List"),
+    (
+        "range_float",
+        "fn range_float(start: float, end: float) -> List",
+    ),
+    ("panic", "fn panic(message: string) -> unit"),
+    ("recover", "fn recover() -> string"),
+    ("type_of", "fn type_of(value: any) -> string"),
+    ("fields", "fn fields(obj: any) -> string"),
+    ("str", "fn str(value: any) -> string"),
+];
+
+const KEYWORD_COMPLETIONS: &[&str] = &[
+    "fn", "let", "pub", "struct", "enum", "match", "case", "if", "elif", "else", "for", "while",
+    "try", "except", "finally", "raise", "await", "spawn", "use", "from", "as", "type",
+];
+
+struct SnippetCompletion {
+    label: &'static str,
+    detail: &'static str,
+    snippet: &'static str,
+}
+
+const SNIPPET_COMPLETIONS: &[SnippetCompletion] = &[
+    SnippetCompletion {
+        label: "fn snippet",
+        detail: "Function definition",
+        snippet: "fn ${1:name}(${2:params})${3: -> type}:\n    ${0}",
+    },
+    SnippetCompletion {
+        label: "if/elif/else",
+        detail: "Conditional block",
+        snippet: "if ${1:condition}:\n    ${2}\nelif ${3:condition}:\n    ${4}\nelse:\n    ${0}",
+    },
+    SnippetCompletion {
+        label: "match",
+        detail: "Match expression",
+        snippet: "match ${1:value}:\n    case ${2:Pattern}:\n        ${3}\n    case ${4:Pattern}:\n        ${0}",
+    },
+];
+
 #[derive(Debug, Clone)]
 struct SymbolInfo {
     span: Span,
     kind: SymbolKind,
     ty: Option<String>,
+    callable: Option<CallableInfo>,
+}
+
+#[derive(Debug, Clone)]
+struct CallableInfo {
+    name: String,
+    params: Vec<CallableParam>,
+    return_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CallableParam {
+    name: String,
+    ty: Option<String>,
+    has_default: bool,
+}
+
+impl CallableInfo {
+    fn from_function(func: &Function) -> Self {
+        let params = func
+            .params
+            .iter()
+            .map(|param| CallableParam {
+                name: param.as_ref().name.as_ref().clone(),
+                ty: param
+                    .as_ref()
+                    .ty
+                    .as_ref()
+                    .map(|ty| format_type(ty.as_ref())),
+                has_default: param.as_ref().default.is_some(),
+            })
+            .collect();
+
+        let return_type = func.ret_ty.as_ref().map(|ty| format_type(ty.as_ref()));
+
+        Self {
+            name: func.name.clone(),
+            params,
+            return_type,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +147,7 @@ impl SymbolTable {
                 span,
                 kind: SymbolKind::Variable,
                 ty,
+                callable: None,
             },
         );
     }
@@ -65,17 +159,43 @@ impl SymbolTable {
                 span,
                 kind: SymbolKind::Parameter,
                 ty,
+                callable: None,
             },
         );
     }
 
-    fn add_function(&mut self, name: String, span: Span, ty: Option<String>) {
+    fn add_function(
+        &mut self,
+        name: String,
+        span: Span,
+        ty: Option<String>,
+        callable: Option<CallableInfo>,
+    ) {
         self.symbols.insert(
             name.clone(),
             SymbolInfo {
                 span,
                 kind: SymbolKind::Function,
                 ty,
+                callable,
+            },
+        );
+    }
+
+    fn add_method(
+        &mut self,
+        name: String,
+        span: Span,
+        ty: Option<String>,
+        callable: Option<CallableInfo>,
+    ) {
+        self.symbols.insert(
+            name.clone(),
+            SymbolInfo {
+                span,
+                kind: SymbolKind::Method,
+                ty,
+                callable,
             },
         );
     }
@@ -87,6 +207,7 @@ impl SymbolTable {
                 span,
                 kind: SymbolKind::Struct,
                 ty: None,
+                callable: None,
             },
         );
     }
@@ -98,6 +219,7 @@ impl SymbolTable {
                 span,
                 kind: SymbolKind::Enum,
                 ty: None,
+                callable: None,
             },
         );
     }
@@ -109,6 +231,7 @@ impl SymbolTable {
                 span,
                 kind: SymbolKind::TypeAlias,
                 ty: None,
+                callable: None,
             },
         );
     }
@@ -130,6 +253,10 @@ impl SymbolTable {
 
     fn all_symbols(&self) -> impl Iterator<Item = (&String, &SymbolInfo)> {
         self.symbols.iter()
+    }
+
+    fn get(&self, name: &str) -> Option<&SymbolInfo> {
+        self.symbols.get(name)
     }
 }
 
@@ -214,6 +341,11 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
                     resolve_provider: Some(true),
                     ..Default::default()
+                }),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".into(), ",".into()]),
+                    retrigger_characters: Some(vec![",".into()]),
+                    work_done_progress_options: Default::default(),
                 }),
                 definition_provider: Some(OneOf::Left(true)),
                 type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
@@ -552,13 +684,34 @@ impl LanguageServer for Backend {
 
         let mut items = Vec::new();
 
-        // Add built-in functions
-        items.push(CompletionItem {
-            label: "print".into(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("fn print(message: string)".into()),
-            ..Default::default()
-        });
+        for (label, detail) in BUILTIN_FUNCTION_COMPLETIONS {
+            items.push(CompletionItem {
+                label: (*label).into(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some((*detail).into()),
+                ..Default::default()
+            });
+        }
+
+        for keyword in KEYWORD_COMPLETIONS {
+            items.push(CompletionItem {
+                label: (*keyword).into(),
+                kind: Some(CompletionItemKind::KEYWORD),
+                detail: Some("keyword".into()),
+                ..Default::default()
+            });
+        }
+
+        for snippet in SNIPPET_COMPLETIONS {
+            items.push(CompletionItem {
+                label: snippet.label.into(),
+                kind: Some(CompletionItemKind::SNIPPET),
+                detail: Some(snippet.detail.into()),
+                insert_text: Some(snippet.snippet.into()),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..Default::default()
+            });
+        }
 
         // Add symbols from symbol table
         if let Some(symbol_table) = symbol_table {
@@ -582,6 +735,80 @@ impl LanguageServer for Backend {
         }
 
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let (text, symbol_table) = {
+            let state = self.state.read().await;
+            let text = state.documents.get(&uri).cloned();
+            let symbol_table = state.symbol_tables.get(&uri).cloned();
+            (text, symbol_table)
+        };
+
+        if let (Some(text), Some(symbol_table)) = (text, symbol_table) {
+            let offset = position_to_offset(&text, position);
+            if let Some((func_name, active_param)) = find_call_context(&text, offset)
+                && let Some(symbol) = symbol_table.get(&func_name)
+                && let Some(callable) = &symbol.callable
+            {
+                    let parameters: Vec<ParameterInformation> = callable
+                        .params
+                        .iter()
+                        .map(|param| {
+                            let mut label = param.name.clone();
+                            if let Some(ty) = &param.ty {
+                                label.push_str(": ");
+                                label.push_str(ty);
+                            }
+                            let mut doc_lines = Vec::new();
+                            if let Some(ty) = &param.ty {
+                                doc_lines.push(format!("type: {}", ty));
+                            }
+                            if param.has_default {
+                                doc_lines.push("default parameter".to_string());
+                            }
+                            let documentation = if doc_lines.is_empty() {
+                                None
+                            } else {
+                                Some(Documentation::String(doc_lines.join("\n")))
+                            };
+                            ParameterInformation {
+                                label: ParameterLabel::Simple(label),
+                                documentation,
+                            }
+                        })
+                        .collect();
+
+                    let signature_label = symbol
+                        .ty
+                        .clone()
+                        .unwrap_or_else(|| format_callable_signature(callable));
+
+                    let signature = SignatureInformation {
+                        label: signature_label,
+                        documentation: None,
+                        parameters: Some(parameters.clone()),
+                        active_parameter: None,
+                    };
+
+                    let active_param_index = if parameters.is_empty() {
+                        0
+                    } else {
+                        active_param.min(parameters.len() - 1)
+                    } as u32;
+
+                    return Ok(Some(SignatureHelp {
+                        signatures: vec![signature],
+                        active_signature: Some(0),
+                        active_parameter: Some(active_param_index),
+                    }));
+            }
+        }
+
+        Ok(None)
     }
 
     async fn inlay_hint(&self, _params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
@@ -754,7 +981,8 @@ fn build_symbol_table_from_statements(
                 // Find function name span from tokens
                 if let Some(span) = find_name_span(&func.as_ref().name, tokens, text) {
                     let sig = format_function_signature(func.as_ref());
-                    table.add_function(func.as_ref().name.clone(), span, Some(sig));
+                    let callable = Some(CallableInfo::from_function(func.as_ref()));
+                    table.add_function(func.as_ref().name.clone(), span, Some(sig), callable);
                 }
                 for param in &func.as_ref().params {
                     let ty = param
@@ -762,11 +990,7 @@ fn build_symbol_table_from_statements(
                         .ty
                         .as_ref()
                         .map(|ty| format_type(ty.as_ref()));
-                    table.add_parameter(
-                        param.as_ref().name.as_ref().clone(),
-                        *param.span(),
-                        ty,
-                    );
+                    table.add_parameter(param.as_ref().name.as_ref().clone(), *param.span(), ty);
                 }
                 build_symbol_table_from_statements(
                     &func.as_ref().body.as_ref().statements,
@@ -775,9 +999,16 @@ fn build_symbol_table_from_statements(
                     text,
                 );
             }
-            Statement::Struct { name, .. } => {
+            Statement::Struct { name, methods, .. } => {
                 if let Some(span) = find_name_span(name, tokens, text) {
                     table.add_struct(name.clone(), span);
+                }
+                for method in methods {
+                    if let Some(span) = find_name_span(&method.as_ref().name, tokens, text) {
+                        let sig = format_function_signature(method.as_ref());
+                        let callable = Some(CallableInfo::from_function(method.as_ref()));
+                        table.add_method(method.as_ref().name.clone(), span, Some(sig), callable);
+                    }
                 }
             }
             Statement::Enum { name, .. } => {
@@ -1041,6 +1272,24 @@ fn format_function_signature(func: &Function) -> String {
     format!("fn {}({}){}", func.name, params.join(", "), ret_ty)
 }
 
+fn format_callable_signature(callable: &CallableInfo) -> String {
+    let params = callable
+        .params
+        .iter()
+        .map(|p| match &p.ty {
+            Some(ty) => format!("{}: {}", p.name, ty),
+            None => p.name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ret = callable
+        .return_type
+        .as_ref()
+        .map(|ty| format!(" -> {}", ty))
+        .unwrap_or_default();
+    format!("fn {}({}){}", callable.name, params, ret)
+}
+
 /// Format type for display
 fn format_type(ty: &Type) -> String {
     match ty {
@@ -1071,7 +1320,7 @@ fn compute_lsp_diagnostics_and_symbols(text: &str) -> (Vec<Diagnostic>, SymbolTa
                     if checker.check_program(&program).is_err() {
                         typecheck::diagnostics_from_type_errors(checker.errors(), source_id, text)
                             .into_iter()
-                            .map(|diag| otter_diag_to_lsp(&diag, text))
+                            .map(|diag| otter_diag_to_lsp(DiagnosticKind::Type, &diag, text))
                             .collect()
                     } else {
                         Vec::new()
@@ -1083,7 +1332,13 @@ fn compute_lsp_diagnostics_and_symbols(text: &str) -> (Vec<Diagnostic>, SymbolTa
             Err(errors) => {
                 let diagnostics = errors
                     .into_iter()
-                    .map(|err| otter_diag_to_lsp(&err.to_diagnostic(source_id), text))
+                    .map(|err| {
+                        otter_diag_to_lsp(
+                            DiagnosticKind::Parser,
+                            &err.to_diagnostic(source_id),
+                            text,
+                        )
+                    })
                     .collect();
                 (diagnostics, SymbolTable::new())
             }
@@ -1091,7 +1346,13 @@ fn compute_lsp_diagnostics_and_symbols(text: &str) -> (Vec<Diagnostic>, SymbolTa
         Err(errors) => {
             let diagnostics = errors
                 .into_iter()
-                .map(|err| otter_diag_to_lsp(&lexer_error_to_diag(source_id, &err), text))
+                .map(|err| {
+                    otter_diag_to_lsp(
+                        DiagnosticKind::Lexer,
+                        &lexer_error_to_diag(source_id, &err),
+                        text,
+                    )
+                })
                 .collect();
             (diagnostics, SymbolTable::new())
         }
@@ -1136,13 +1397,36 @@ fn collect_identifiers(text: &str) -> Vec<String> {
     set.into_iter().collect()
 }
 
+#[derive(Clone, Copy)]
+enum DiagnosticKind {
+    Lexer,
+    Parser,
+    Type,
+}
+
+impl DiagnosticKind {
+    fn code(self) -> &'static str {
+        match self {
+            DiagnosticKind::Lexer => "lexer",
+            DiagnosticKind::Parser => "parser",
+            DiagnosticKind::Type => "typecheck",
+        }
+    }
+}
+
 fn lexer_error_to_diag(source: &str, err: &LexerError) -> OtterDiagnostic {
     err.to_diagnostic(source)
 }
 
-fn otter_diag_to_lsp(diag: &OtterDiagnostic, text: &str) -> Diagnostic {
+fn otter_diag_to_lsp(kind: DiagnosticKind, diag: &OtterDiagnostic, text: &str) -> Diagnostic {
     let range = span_to_range(diag.span(), text);
     let mut message = diag.message().to_string();
+
+    if let Some(snippet) = snippet_with_highlight(text, diag.span()) {
+        message.push('\n');
+        message.push_str(&snippet);
+    }
+
     if let Some(suggestion) = diag.suggestion() {
         message.push_str(&format!("\nSuggestion: {}", suggestion));
     }
@@ -1158,7 +1442,7 @@ fn otter_diag_to_lsp(diag: &OtterDiagnostic, text: &str) -> Diagnostic {
             OtterDiagSeverity::Info => DiagnosticSeverity::INFORMATION,
             OtterDiagSeverity::Hint => DiagnosticSeverity::HINT,
         }),
-        code: None,
+        code: Some(NumberOrString::String(kind.code().into())),
         code_description: None,
         source: Some("otterlang".into()),
         message,
@@ -1166,6 +1450,36 @@ fn otter_diag_to_lsp(diag: &OtterDiagnostic, text: &str) -> Diagnostic {
         tags: None,
         data: None,
     }
+}
+
+fn snippet_with_highlight(text: &str, span: Span) -> Option<String> {
+    if span.start() >= text.len() {
+        return None;
+    }
+
+    let line_start = text[..span.start()]
+        .rfind('\n')
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    let line_end = text[span.start()..]
+        .find('\n')
+        .map(|idx| span.start() + idx)
+        .unwrap_or(text.len());
+    let line = text[line_start..line_end].trim_end_matches(['\r']);
+    let highlight_start = span.start().saturating_sub(line_start);
+    let highlight_len = span
+        .end()
+        .saturating_sub(span.start())
+        .min(line.len().saturating_sub(highlight_start));
+    let mut marker = String::new();
+    for _ in 0..highlight_start {
+        marker.push(' ');
+    }
+    let carets = highlight_len.max(1);
+    for _ in 0..carets {
+        marker.push('^');
+    }
+    Some(format!("{}\n{}", line, marker))
 }
 
 fn span_to_range(span: Span, text: &str) -> Range {
@@ -1192,6 +1506,93 @@ fn offset_to_position(text: &str, offset: usize) -> Position {
         counted += ch.len_utf8();
     }
     Position { line, character }
+}
+
+fn position_to_offset(text: &str, position: Position) -> usize {
+    let mut offset = 0usize;
+    for (current_line, line) in text.split_inclusive('\n').enumerate() {
+        if current_line == position.line as usize {
+            let mut byte_index = 0usize;
+            let mut seen_chars = 0usize;
+            for (idx, ch) in line.char_indices() {
+                if seen_chars == position.character as usize {
+                    byte_index = idx;
+                    break;
+                }
+                seen_chars += 1;
+                byte_index = idx + ch.len_utf8();
+            }
+            let target = if seen_chars >= position.character as usize {
+                byte_index
+            } else {
+                line.len()
+            };
+            return offset + target;
+        }
+        offset += line.len();
+    }
+    text.len()
+}
+
+fn find_call_context(text: &str, offset: usize) -> Option<(String, usize)> {
+    if offset == 0 || offset > text.len() {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let mut idx = offset;
+    let mut depth = 0i32;
+    while idx > 0 {
+        idx -= 1;
+        let ch = bytes[idx] as char;
+        match ch {
+            '(' => {
+                if depth == 0 {
+                    let mut name_end = idx;
+                    while name_end > 0 && bytes[name_end - 1].is_ascii_whitespace() {
+                        name_end -= 1;
+                    }
+                    if name_end == 0 {
+                        return None;
+                    }
+                    let mut name_start = name_end;
+                    while name_start > 0 {
+                        let c = bytes[name_start - 1] as char;
+                        if c.is_alphanumeric() || c == '_' || c == '.' {
+                            name_start -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    let func_segment = text[name_start..name_end].trim();
+                    if func_segment.is_empty() {
+                        return None;
+                    }
+                    let func_name = func_segment.rsplit('.').next()?.to_string();
+                    let args_slice = &text[idx + 1..offset];
+                    let mut param_depth = 0i32;
+                    let mut commas = 0usize;
+                    for ch in args_slice.chars() {
+                        match ch {
+                            '(' | '[' | '{' => param_depth += 1,
+                            ')' | ']' | '}' => {
+                                if param_depth > 0 {
+                                    param_depth -= 1;
+                                }
+                            }
+                            ',' if param_depth == 0 => commas += 1,
+                            _ => {}
+                        }
+                    }
+                    return Some((func_name, commas));
+                } else {
+                    depth -= 1;
+                }
+            }
+            ')' => depth += 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]

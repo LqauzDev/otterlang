@@ -60,11 +60,11 @@
         },
         {
           "name": "keyword.other.otterlang",
-          "match": "\\b(fn|let|pub|struct|enum|type|use|as|in|and|or|not|is)\\b"
+          "match": "\\b(fn|let|pub|struct|enum|type|use|from|as|in|and|or|not|is|lambda|async)\\b"
         },
         {
           "name": "constant.language.boolean.otterlang",
-          "match": "\\b(true|false|nil)\\b"
+          "match": "\\b(true|false|None|none)\\b"
         }
       ]
     },
@@ -84,7 +84,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.otterlang",
-          "match": "\\b(print|println|eprint|eprintln|len|str|type|range|abs|min|max|round|floor|ceil|cap|append|delete|enumerate|list\\.new|map\\.new|list\\.get|map\\.get|stringify|type_of|fields)\\b"
+          "match": "\\b(print|println|eprintln|len|cap|append|delete|enumerate|list_new|map_new|list_get|map_get|map_set|panic|recover|range|range_float|type_of|fields|str|stringify|try_func|try_result|try_error|defer_func|select|select_case)\\b"
         }
       ]
     },
@@ -289,15 +289,15 @@
       "patterns": [
         {
           "name": "constant.numeric.integer.otterlang",
-          "match": "\\b\\d+\\b"
+          "match": "\\b\\d[\\d_]*\\b"
         },
         {
           "name": "constant.numeric.float.otterlang",
-          "match": "\\b\\d+\\.\\d+(?:[eE][+-]?\\d+)?\\b"
+          "match": "\\b\\d[\\d_]*\\.\\d[\\d_]*(?:[eE][+-]?\\d[\\d_]*)?\\b"
         },
         {
           "name": "constant.numeric.scientific.otterlang",
-          "match": "\\b\\d+[eE][+-]?\\d+\\b"
+          "match": "\\b\\d[\\d_]*[eE][+-]?\\d[\\d_]*\\b"
         }
       ]
     },

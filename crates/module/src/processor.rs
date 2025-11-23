@@ -336,11 +336,7 @@ mod tests {
         let math_file = source_dir.join("math.ot");
         let facade_file = source_dir.join("facade.ot");
 
-        fs::write(
-            &math_file,
-            "pub fn sin(x: float) -> float:\n    return x\n",
-        )
-        .unwrap();
+        fs::write(&math_file, "pub fn sin(x: float) -> float:\n    return x\n").unwrap();
         fs::write(&facade_file, "pub use ./math.sin as sine\n").unwrap();
 
         let mut loader = ModuleLoader::new(source_dir.clone(), None);

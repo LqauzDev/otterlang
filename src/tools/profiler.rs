@@ -101,10 +101,7 @@ fn profile_memory(program: &Path, format: &str) -> Result<()> {
 
             let leaks = profiler.detect_leaks();
             if !leaks.is_empty() {
-                println!(
-                    "\nDetected {} potential memory leaks:",
-                    leaks.len()
-                );
+                println!("\nDetected {} potential memory leaks:", leaks.len());
                 for leak in leaks.iter().take(10) {
                     println!("  Address: 0x{:x}, Size: {} bytes", leak.pointer, leak.size);
                 }
@@ -132,7 +129,10 @@ fn profile_calls(program: &Path, iterations: usize) -> Result<()> {
         "Function", "Calls", "Total Time", "Avg Time", "Max Time"
     );
     println!("{}", "-".repeat(90));
-    println!("{}", "Full call profiling requires runtime instrumentation".yellow());
+    println!(
+        "{}",
+        "Full call profiling requires runtime instrumentation".yellow()
+    );
 
     Ok(())
 }
