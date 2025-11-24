@@ -128,8 +128,7 @@
   },
   "indentationRules": {
     "increaseIndentPattern": "^\\s*(fn|def|class|struct|enum|if|elif|else|for|while|try|except|catch|finally|with|match|case)\\b.*:\\s*$",
-    "decreaseIndentPattern": "^\\s*(elif|else|except|catch|finally|case)\\b.*:",
-    "indentNextLinePattern": "^\\s*(fn|def|class|struct|enum|if|elif|else|for|while|try|except|catch|finally|with|match|case)\\b.*:\\s*$"
+    "decreaseIndentPattern": "^\\s*(elif|else|except|catch|finally|case)\\b.*:"
   },
   "onEnterRules": [
     {
