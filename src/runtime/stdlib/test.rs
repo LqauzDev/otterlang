@@ -173,6 +173,11 @@ pub unsafe extern "C" fn otter_test_assert_false(condition: i64, message: *const
     unsafe { otter_test_assert(if condition == 0 { 1 } else { 0 }, message) }
 }
 
+/// returns the input point unchanged
+///
+/// # Safety
+///
+/// this function crosses the FFI boundary and assumes the TestPoint struct is properly initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn otter_test_struct_identity(point: TestPoint) -> TestPoint {
     point

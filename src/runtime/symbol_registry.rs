@@ -1,7 +1,7 @@
 use std::fmt;
 
-use abi_stable::std_types::RVec;
 use abi_stable::StableAbi;
+use abi_stable::std_types::RVec;
 use ahash::AHashMap;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;

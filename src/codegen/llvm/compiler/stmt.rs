@@ -72,11 +72,8 @@ impl<'ctx> Compiler<'ctx> {
                         .unwrap()
                         .get_parent()
                         .unwrap();
-                    let alloca = self.create_entry_block_alloca(
-                        function,
-                        name.as_ref(),
-                        val_ty.clone(),
-                    )?;
+                    let alloca =
+                        self.create_entry_block_alloca(function, name.as_ref(), val_ty.clone())?;
                     if let Some(v) = val_value {
                         self.builder.build_store(alloca, v)?;
                     }
@@ -100,8 +97,7 @@ impl<'ctx> Compiler<'ctx> {
                 if let Some(var) = ctx.get(name.as_ref()) {
                     if let Some(v) = val_value {
                         // Type checking and coercion
-                        let coerced_val =
-                            self.coerce_type(v, val_ty.clone(), var.ty.clone())?;
+                        let coerced_val = self.coerce_type(v, val_ty.clone(), var.ty.clone())?;
                         self.builder.build_store(var.ptr, coerced_val)?;
                     } else if val_ty != OtterType::Unit {
                         bail!(
@@ -529,7 +525,10 @@ impl<'ctx> Compiler<'ctx> {
                     // Map iteration is not yet implemented
                     bail!("Map iteration is not yet supported")
                 }
-                _ => bail!("For loops over type {:?} are not supported yet", iterable_ty),
+                _ => bail!(
+                    "For loops over type {:?} are not supported yet",
+                    iterable_ty
+                ),
             }
         }
     }

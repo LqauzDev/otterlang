@@ -3,39 +3,30 @@ use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
 
-use abi_stable::StableAbi;
-use abi_stable::std_types::{RString, RVec};
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::{Metadata, MetadataCommand, Package};
 use libloading::Library;
-use once_cell::sync::OnceCell;
 use sha1::{Digest, Sha1};
 use tracing::debug;
 
+use super::{FfiBackend, bootstrap_stdlib, register_dynamic_exports};
 use crate::runtime::ffi_api;
-use crate::runtime::symbol_registry::{FfiFunction, FfiSignature, FfiType, SymbolRegistry};
+use crate::runtime::symbol_registry::SymbolRegistry;
 use cache::path::cache_root;
-
-#[derive(Clone, Copy)]
-pub struct SymbolProvider {
-    pub register: fn(&SymbolRegistry),
-}
-
-inventory::collect!(crate::runtime::ffi::SymbolProvider);
 
 type JsonDispatcher = unsafe extern "C" fn(
     *const std::os::raw::c_char,
     *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char;
 
-pub struct Runtime {
+pub struct DynamicLibraryBackend {
     registry: &'static SymbolRegistry,
     libraries: HashMap<String, Library>,
     json_dispatchers: HashMap<String, JsonDispatcher>,
     ffi_root: PathBuf,
 }
 
-impl Runtime {
+impl DynamicLibraryBackend {
     pub fn new() -> Result<Self> {
         let registry = bootstrap_stdlib();
 
@@ -53,11 +44,7 @@ impl Runtime {
         })
     }
 
-    pub fn symbols(&self) -> &SymbolRegistry {
-        self.registry
-    }
-
-    pub fn load_crate(&mut self, crate_name: &str) -> Result<()> {
+    fn ensure_loaded(&mut self, crate_name: &str) -> Result<()> {
         if self.libraries.contains_key(crate_name) {
             return Ok(());
         }
@@ -105,8 +92,8 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn call_json(&mut self, crate_name: &str, func: &str, args_json: &str) -> Result<String> {
-        self.load_crate(crate_name)?;
+    fn call_json_inner(&mut self, crate_name: &str, func: &str, args_json: &str) -> Result<String> {
+        self.ensure_loaded(crate_name)?;
         let dispatcher = self
             .json_dispatchers
             .get(crate_name)
@@ -127,9 +114,17 @@ impl Runtime {
     }
 }
 
-fn register_builtin_symbols(registry: &SymbolRegistry) {
-    for provider in inventory::iter::<SymbolProvider> {
-        (provider.register)(registry);
+impl FfiBackend for DynamicLibraryBackend {
+    fn symbols(&self) -> &SymbolRegistry {
+        self.registry
+    }
+
+    fn load_crate(&mut self, crate_name: &str) -> Result<()> {
+        self.ensure_loaded(crate_name)
+    }
+
+    fn call_json(&mut self, crate_name: &str, func: &str, args_json: &str) -> Result<String> {
+        self.call_json_inner(crate_name, func, args_json)
     }
 }
 
@@ -170,41 +165,6 @@ fn fingerprint_package(package: &Package) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-#[repr(C)]
-#[derive(Clone, StableAbi)]
-pub struct StableFunction {
-    pub name: RString,
-    pub symbol: RString,
-    pub params: RVec<FfiType>,
-    pub result: FfiType,
-}
-
-#[repr(C)]
-#[derive(Clone, StableAbi)]
-pub struct StableExportSet {
-    pub functions: RVec<StableFunction>,
-}
-
-pub type ExportFn = extern "C" fn() -> StableExportSet;
-
-pub fn register_dynamic_exports(library: &Library, registry: &SymbolRegistry) -> Result<()> {
-    unsafe {
-        let exports = library
-            .get::<ExportFn>(b"otterlang_exports")
-            .context("ffi module missing otterlang_exports symbol")?;
-        let set = exports();
-        for function in set.functions.into_iter() {
-            registry.register(FfiFunction {
-                name: function.name.into_string(),
-                symbol: function.symbol.into_string(),
-                signature: FfiSignature::new(function.params.into_vec(), function.result),
-            });
-        }
-    }
-
-    Ok(())
-}
-
 fn resolve_package(crate_name: &str) -> Result<(Metadata, Package)> {
     let metadata = MetadataCommand::new()
         .exec()
@@ -242,14 +202,4 @@ fn resolve_package(crate_name: &str) -> Result<(Metadata, Package)> {
     }
 
     Err(anyhow!("crate `{crate_name}` not found"))
-}
-
-static STD_INIT: OnceCell<()> = OnceCell::new();
-
-pub fn bootstrap_stdlib() -> &'static SymbolRegistry {
-    let registry = SymbolRegistry::global();
-    STD_INIT.get_or_init(|| {
-        register_builtin_symbols(registry);
-    });
-    registry
 }

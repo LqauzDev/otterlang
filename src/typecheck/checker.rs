@@ -1256,20 +1256,27 @@ impl TypeChecker {
                         {
                             Ok(TypeInfo::Module(name.clone()))
                         } else {
-                            self.errors.push(TypeError::new(format!("undefined variable: {}", name))
+                            self.errors.push(
+                                TypeError::new(format!("undefined variable: {}", name))
+                                    .with_hint(format!(
+                                        "did you mean to declare it with `let {}`?",
+                                        name
+                                    ))
+                                    .with_help("Variables must be declared before use".to_string())
+                                    .with_span(*span),
+                            );
+                            Ok(TypeInfo::Error)
+                        }
+                    } else {
+                        self.errors.push(
+                            TypeError::new(format!("undefined variable: {}", name))
                                 .with_hint(format!(
                                     "did you mean to declare it with `let {}`?",
                                     name
                                 ))
                                 .with_help("Variables must be declared before use".to_string())
-                                .with_span(*span));
-                            Ok(TypeInfo::Error)
-                        }
-                    } else {
-                        self.errors.push(TypeError::new(format!("undefined variable: {}", name))
-                            .with_hint(format!("did you mean to declare it with `let {}`?", name))
-                            .with_help("Variables must be declared before use".to_string())
-                            .with_span(*span));
+                                .with_span(*span),
+                        );
                         Ok(TypeInfo::Error)
                     }
                 }
@@ -1440,8 +1447,10 @@ impl TypeChecker {
                             if let Some(func) = self.context.get_function(name).cloned() {
                                 func
                             } else {
-                                self.errors.push(TypeError::new(format!("undefined function: {}", name))
-                                    .with_span(*span));
+                                self.errors.push(
+                                    TypeError::new(format!("undefined function: {}", name))
+                                        .with_span(*span),
+                                );
                                 TypeInfo::Error
                             }
                         }

@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow, bail};
-use inkwell::types::BasicTypeEnum;
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
+use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue};
 
 use crate::codegen::llvm::compiler::Compiler;
@@ -251,8 +251,7 @@ impl<'ctx> Compiler<'ctx> {
                     .get_parent()
                     .unwrap();
                 let matched_ty = matched_val.ty.clone();
-                let alloca =
-                    self.create_entry_block_alloca(function, name, matched_ty.clone())?;
+                let alloca = self.create_entry_block_alloca(function, name, matched_ty.clone())?;
 
                 if let Some(v) = matched_val.value {
                     self.builder.build_store(alloca, v)?;
@@ -1265,10 +1264,7 @@ impl<'ctx> Compiler<'ctx> {
                         (&then_val.value.unwrap(), then_bb_end),
                         (&else_val.value.unwrap(), else_bb_end),
                     ]);
-                    Ok(EvaluatedValue::with_value(
-                        phi.as_basic_value(),
-                        then_ty,
-                    ))
+                    Ok(EvaluatedValue::with_value(phi.as_basic_value(), then_ty))
                 } else {
                     // Unit type
                     Ok(EvaluatedValue {
