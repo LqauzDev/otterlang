@@ -13,6 +13,7 @@ pub enum OtterType {
     Opaque, // For handles, pointers, etc.
     List,
     Map,
+    Struct(u32),
 }
 
 #[derive(Debug, Clone)]

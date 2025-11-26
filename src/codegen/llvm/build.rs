@@ -24,8 +24,7 @@ pub fn current_llvm_version() -> String {
 
 /// Build the Rust runtime as a static library
 fn ensure_runtime_library() -> Result<PathBuf> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| ".".to_string());
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let runtime_lib_dir = Path::new(&manifest_dir).join("target").join("runtime");
     let runtime_lib = runtime_lib_dir.join("libotterlang_runtime.a");
 
@@ -36,8 +35,7 @@ fn ensure_runtime_library() -> Result<PathBuf> {
     }
 
     // Create runtime library directory
-    fs::create_dir_all(&runtime_lib_dir)
-        .context("failed to create runtime library directory")?;
+    fs::create_dir_all(&runtime_lib_dir).context("failed to create runtime library directory")?;
 
     // Build the runtime as a static library
     let mut cmd = Command::new("cargo");
@@ -55,7 +53,8 @@ fn ensure_runtime_library() -> Result<PathBuf> {
         cmd.env("MACOSX_DEPLOYMENT_TARGET", "11.0");
     }
 
-    let status = cmd.status()
+    let status = cmd
+        .status()
         .context("failed to build runtime static library")?;
 
     if !status.success() {
@@ -71,16 +70,17 @@ fn ensure_runtime_library() -> Result<PathBuf> {
     };
 
     if !generated_lib.exists() {
-        bail!("runtime library was not generated at expected location: {}", generated_lib.display());
+        bail!(
+            "runtime library was not generated at expected location: {}",
+            generated_lib.display()
+        );
     }
 
     // Copy to expected location
-    fs::copy(&generated_lib, &runtime_lib)
-        .context("failed to copy runtime library")?;
+    fs::copy(&generated_lib, &runtime_lib).context("failed to copy runtime library")?;
 
     Ok(runtime_lib)
 }
-
 
 pub fn build_executable(
     program: &Program,
@@ -143,14 +143,14 @@ pub fn build_executable(
     } else {
         RelocMode::Default
     };
-    
+
     // macOS on x86_64 needs explicit SSE feature flags; other targets don't
     let (cpu, features) = if runtime_triple.os == "darwin" && runtime_triple.arch == "x86_64" {
         ("generic", "+sse,+sse2,+sse3,+ssse3")
     } else {
         ("generic", "")
     };
-    
+
     let target_machine = target
         .create_target_machine(
             &llvm_triple,
@@ -165,8 +165,6 @@ pub fn build_executable(
     compiler
         .module
         .set_data_layout(&target_machine.get_target_data().get_data_layout());
-
-
 
     compiler.run_default_passes(
         options.opt_level,
@@ -212,12 +210,12 @@ pub fn build_executable(
         if runtime_triple.needs_pic() && !runtime_triple.is_windows() {
             cc.arg("-fPIC");
         }
-        
+
         // Add macOS version minimum
         if runtime_triple.os == "darwin" {
             cc.arg("-mmacosx-version-min=11.0");
         }
-        
+
         // Add target triple for cross-compilation (skip for native target)
         if !is_native_target {
             let compiler_target_flag = preferred_target_flag(&c_compiler);
@@ -264,7 +262,7 @@ pub fn build_executable(
             cc.arg("-mmacosx-version-min=11.0");
             cc.arg("-w"); // Suppress warnings
         }
-        
+
         if let Some(ref rt_o) = runtime_o {
             cc.arg(&object_path).arg(rt_o).arg("-o").arg(output);
         } else {
@@ -456,12 +454,12 @@ pub fn build_shared_library(
         if runtime_triple.needs_pic() && !runtime_triple.is_windows() {
             cc.arg("-fPIC");
         }
-        
+
         // Add macOS version minimum
         if runtime_triple.os == "darwin" {
             cc.arg("-mmacosx-version-min=11.0");
         }
-        
+
         let compiler_target_flag = preferred_target_flag(&c_compiler);
         cc.arg(compiler_target_flag).arg(&triple_str);
 
@@ -514,12 +512,12 @@ pub fn build_shared_library(
             cc.arg("-fPIC");
         }
         cc.arg(linker_target_flag).arg(&triple_str);
-        
+
         // Add macOS version minimum to avoid platform load command warning
         if runtime_triple.os == "darwin" {
             cc.arg("-mmacosx-version-min=11.0");
         }
-        
+
         cc.arg("-o").arg(&lib_path).arg(&object_path);
         if let Some(ref rt_o) = runtime_o {
             cc.arg(rt_o);

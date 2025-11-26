@@ -62,7 +62,12 @@ impl<'ctx> Compiler<'ctx> {
                 if let Some(_basic_ty) = self.basic_type(val.ty)? {
                     // Use create_entry_block_alloca to ensure alloca is in the entry block
                     // This prevents stack overflow in loops and ensures dominance
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self
+                        .builder
+                        .get_insert_block()
+                        .unwrap()
+                        .get_parent()
+                        .unwrap();
                     let alloca = self.create_entry_block_alloca(function, name.as_ref(), val.ty)?;
                     if let Some(v) = val.value {
                         self.builder.build_store(alloca, v)?;
@@ -345,11 +350,7 @@ impl<'ctx> Compiler<'ctx> {
                 .unwrap();
 
             // Create loop variable
-            let loop_var_alloca = self.create_entry_block_alloca(
-                function,
-                var,
-                start_val.ty,
-            )?;
+            let loop_var_alloca = self.create_entry_block_alloca(function, var, start_val.ty)?;
 
             ctx.insert(
                 var.to_string(),
@@ -555,11 +556,7 @@ impl<'ctx> Compiler<'ctx> {
             .into_pointer_value();
 
         // Create loop variable allocation
-        let var_alloca = self.create_entry_block_alloca(
-            function,
-            var,
-            element_type,
-        )?;
+        let var_alloca = self.create_entry_block_alloca(function, var, element_type)?;
 
         // Insert variable into context
         ctx.insert(
@@ -651,13 +648,13 @@ impl<'ctx> Compiler<'ctx> {
         let try_bb = self.context.append_basic_block(function, "try_body");
         let handlers_bb = self.context.append_basic_block(function, "handlers");
         let exit_bb = self.context.append_basic_block(function, "try_exit");
-        
+
         let else_bb = if else_block.is_some() {
             Some(self.context.append_basic_block(function, "try_else"))
         } else {
             None
         };
-        
+
         let finally_bb = if finally_block.is_some() {
             Some(self.context.append_basic_block(function, "finally"))
         } else {
@@ -669,7 +666,12 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.position_at_end(try_bb);
         self.lower_block(body, function, ctx)?;
 
-        if self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_none() {
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_none()
+        {
             if let Some(else_bb) = else_bb {
                 self.builder.build_unconditional_branch(else_bb)?;
             } else if let Some(finally_bb) = finally_bb {
@@ -683,15 +685,17 @@ impl<'ctx> Compiler<'ctx> {
         if !handlers.is_empty() {
             let first_handler_bb = self.context.append_basic_block(function, "handler_0");
             self.builder.build_unconditional_branch(first_handler_bb)?;
-             
+
             for (i, handler) in handlers.iter().enumerate() {
                 let handler_bb = if i == 0 {
                     first_handler_bb
                 } else {
-                    self.context.append_basic_block(function, &format!("handler_{}", i))
+                    self.context
+                        .append_basic_block(function, &format!("handler_{}", i))
                 };
                 let next_handler_bb = if i < handlers.len() - 1 {
-                    self.context.append_basic_block(function, &format!("handler_check_{}", i + 1))
+                    self.context
+                        .append_basic_block(function, &format!("handler_check_{}", i + 1))
                 } else {
                     finally_bb.unwrap_or(exit_bb)
                 };
@@ -699,7 +703,12 @@ impl<'ctx> Compiler<'ctx> {
                 self.builder.position_at_end(handler_bb);
                 self.lower_block(handler.as_ref().body.as_ref(), function, ctx)?;
 
-                if self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_none() {
+                if self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_terminator())
+                    .is_none()
+                {
                     if let Some(finally_bb) = finally_bb {
                         self.builder.build_unconditional_branch(finally_bb)?;
                     } else {
@@ -719,7 +728,12 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.position_at_end(else_bb.unwrap());
             self.lower_block(else_blk, function, ctx)?;
 
-            if self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_none() {
+            if self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_terminator())
+                .is_none()
+            {
                 if let Some(finally_bb) = finally_bb {
                     self.builder.build_unconditional_branch(finally_bb)?;
                 } else {
@@ -732,7 +746,12 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.position_at_end(finally_bb.unwrap());
             self.lower_block(finally, function, ctx)?;
 
-            if self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_none() {
+            if self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_terminator())
+                .is_none()
+            {
                 self.builder.build_unconditional_branch(exit_bb)?;
             }
         }
@@ -757,7 +776,7 @@ impl<'ctx> Compiler<'ctx> {
             // Look up the runtime throw function
             if let (Some(throw_fn), Some(exc_val)) = (
                 self.declared_functions.get("__otter_throw"),
-                exception_val.value
+                exception_val.value,
             ) {
                 self.builder
                     .build_call(*throw_fn, &[exc_val.into()], "throw")?;

@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow, bail};
 use inkwell::IntPredicate;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, IntValue, FunctionValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue};
 
 use crate::codegen::llvm::compiler::Compiler;
 use crate::codegen::llvm::compiler::types::{EvaluatedValue, FunctionContext, OtterType};
 use crate::typecheck::TypeInfo;
-use ast::nodes::{BinaryOp, Expr, Literal, Node, UnaryOp, Statement, Block};
+use ast::nodes::{BinaryOp, Block, Expr, Literal, Node, Statement, UnaryOp};
 
 impl<'ctx> Compiler<'ctx> {
     pub(crate) fn eval_expr(
@@ -42,9 +42,76 @@ impl<'ctx> Compiler<'ctx> {
                     self.try_build_enum_member(expr, object.as_ref().as_ref(), field, ctx)?
                 {
                     Ok(value)
+                } else if self
+                    .module_path_from_expr(object.as_ref().as_ref())
+                    .is_some()
+                {
+                    // Module references don't need runtime materialization.
+                    Ok(EvaluatedValue {
+                        ty: OtterType::Unit,
+                        value: None,
+                    })
                 } else {
-                    bail!("Complex member expressions not yet supported");
+                    let object_value = self.eval_expr(object.as_ref().as_ref(), ctx)?;
+                    if object_value.value.is_none() {
+                        bail!("cannot access field '{}' without value", field);
+                    }
+                    if let OtterType::Struct(struct_id) = object_value.ty {
+                        let struct_value = object_value.value.unwrap().into_struct_value();
+                        let info = self.struct_info(struct_id);
+                        let idx = info.field_indices.get(field).copied().ok_or_else(|| {
+                            anyhow!("struct '{}' has no field '{}'", info.name, field)
+                        })?;
+                        let extracted = self
+                            .builder
+                            .build_extract_value(struct_value, idx as u32, field)
+                            .map_err(|e| anyhow!("failed to extract field '{}': {e}", field))?;
+                        let field_ty = info.field_types[idx];
+                        Ok(EvaluatedValue::with_value(extracted, field_ty))
+                    } else {
+                        bail!(
+                            "Complex member expressions not yet supported (expr, ty={:?})",
+                            object_value.ty
+                        );
+                    }
                 }
+            }
+            Expr::Struct { name, fields } => {
+                let (struct_id, _) = self
+                    .struct_info_by_name(name)
+                    .ok_or_else(|| anyhow!("unknown struct type '{}'", name))?;
+                let (struct_name, struct_ty) = {
+                    let info = self.struct_info(struct_id);
+                    (info.name.clone(), info.ty)
+                };
+                let mut aggregate = struct_ty.get_undef();
+                for (field_name, field_expr) in fields {
+                    let idx = {
+                        let info = self.struct_info(struct_id);
+                        info.field_indices.get(field_name).copied().ok_or_else(|| {
+                            anyhow!("struct '{}' has no field '{}'", struct_name, field_name)
+                        })?
+                    };
+                    let field_value = self.eval_expr(field_expr.as_ref(), ctx)?;
+                    let raw_value = field_value
+                        .value
+                        .ok_or_else(|| anyhow!("field '{}' produced no value", field_name))?;
+                    let expected_ty = {
+                        let info = self.struct_info(struct_id);
+                        info.field_types[idx]
+                    };
+                    let coerced = self.coerce_type(raw_value, field_value.ty, expected_ty)?;
+                    aggregate = self
+                        .builder
+                        .build_insert_value(aggregate, coerced, idx as u32, field_name)
+                        .map_err(|e| anyhow!("failed to insert field '{}': {e}", field_name))?
+                        .into_struct_value();
+                }
+
+                Ok(EvaluatedValue::with_value(
+                    aggregate.into(),
+                    OtterType::Struct(struct_id),
+                ))
             }
             Expr::If {
                 cond: _,
@@ -67,64 +134,86 @@ impl<'ctx> Compiler<'ctx> {
         };
 
         let matched_val = self.eval_expr(value.as_ref().as_ref(), ctx)?;
-        let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+        let function = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
         let merge_bb = self.context.append_basic_block(function, "match_merge");
-        
+
         let mut incoming_values = Vec::new();
         let mut incoming_blocks = Vec::new();
-        
-        let mut next_check_bb = self.context.append_basic_block(function, "match_arm_check_0");
+
+        let mut next_check_bb = self
+            .context
+            .append_basic_block(function, "match_arm_check_0");
         self.builder.build_unconditional_branch(next_check_bb)?;
-        
+
         for (i, arm) in arms.iter().enumerate() {
             self.builder.position_at_end(next_check_bb);
-            
+
             next_check_bb = if i < arms.len() - 1 {
-                self.context.append_basic_block(function, &format!("match_arm_check_{}", i + 1))
+                self.context
+                    .append_basic_block(function, &format!("match_arm_check_{}", i + 1))
             } else {
                 self.context.append_basic_block(function, "match_no_match")
             };
-            
-            let body_bb = self.context.append_basic_block(function, &format!("match_arm_body_{}", i));
-            
+
+            let body_bb = self
+                .context
+                .append_basic_block(function, &format!("match_arm_body_{}", i));
+
             self.compile_pattern_match(
-                &arm.as_ref().pattern, 
-                &matched_val, 
-                body_bb, 
+                &arm.as_ref().pattern,
+                &matched_val,
+                body_bb,
                 next_check_bb,
-                ctx
+                ctx,
             )?;
-            
+
             self.builder.position_at_end(body_bb);
             let body_val = self.lower_block_expression(&arm.as_ref().body, function, ctx)?;
-            
-            if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+
+            if self
+                .builder
+                .get_insert_block()
+                .unwrap()
+                .get_terminator()
+                .is_none()
+            {
                 self.builder.build_unconditional_branch(merge_bb)?;
             }
-            
+
             let current_bb = self.builder.get_insert_block().unwrap();
             if let Some(v) = body_val.value {
                 incoming_values.push(v);
                 incoming_blocks.push(current_bb);
             }
         }
-        
+
         self.builder.position_at_end(next_check_bb);
         self.builder.build_unreachable()?;
-        
+
         self.builder.position_at_end(merge_bb);
-        
+
         if !incoming_values.is_empty() {
             let phi_type = incoming_values[0].get_type();
             let phi = self.builder.build_phi(phi_type, "match_result")?;
-            
+
             for (val, block) in incoming_values.iter().zip(incoming_blocks.iter()) {
                 phi.add_incoming(&[(val, *block)]);
             }
-            
-            Ok(EvaluatedValue::with_value(phi.as_basic_value(), OtterType::Opaque))
+
+            Ok(EvaluatedValue::with_value(
+                phi.as_basic_value(),
+                OtterType::Opaque,
+            ))
         } else {
-            Ok(EvaluatedValue { ty: OtterType::Unit, value: None })
+            Ok(EvaluatedValue {
+                ty: OtterType::Unit,
+                value: None,
+            })
         }
     }
 
@@ -137,7 +226,7 @@ impl<'ctx> Compiler<'ctx> {
         ctx: &mut FunctionContext<'ctx>,
     ) -> Result<()> {
         use ast::nodes::Pattern;
-        
+
         match pattern.as_ref() {
             Pattern::Wildcard => {
                 self.builder.build_unconditional_branch(success_bb)?;
@@ -146,86 +235,137 @@ impl<'ctx> Compiler<'ctx> {
             Pattern::Literal(lit) => {
                 let lit_val = self.eval_literal(lit.as_ref())?;
                 let is_equal = self.build_equality_check(matched_val, &lit_val)?;
-                self.builder.build_conditional_branch(is_equal, success_bb, fail_bb)?;
+                self.builder
+                    .build_conditional_branch(is_equal, success_bb, fail_bb)?;
                 Ok(())
             }
             Pattern::Identifier(name) => {
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
                 let alloca = self.create_entry_block_alloca(function, name, matched_val.ty)?;
-                
+
                 if let Some(v) = matched_val.value {
                     self.builder.build_store(alloca, v)?;
                 }
-                
-                ctx.insert(name.clone(), crate::codegen::llvm::compiler::types::Variable {
-                    ptr: alloca,
-                    ty: matched_val.ty,
-                });
-                
+
+                ctx.insert(
+                    name.clone(),
+                    crate::codegen::llvm::compiler::types::Variable {
+                        ptr: alloca,
+                        ty: matched_val.ty,
+                    },
+                );
+
                 self.builder.build_unconditional_branch(success_bb)?;
                 Ok(())
             }
-            Pattern::EnumVariant { enum_name, variant, fields } => {
+            Pattern::EnumVariant {
+                enum_name,
+                variant,
+                fields,
+            } => {
                 let get_tag_fn = self.get_or_declare_ffi_function("runtime.enum.get_tag")?;
-                let handle = matched_val.value.ok_or_else(|| anyhow!("Enum value is void"))?;
-                
-                let tag_val = self.builder.build_call(get_tag_fn, &[handle.into()], "tag")?
-                    .try_as_basic_value().left().unwrap().into_int_value();
-                
-                let layout = self.enum_layout(enum_name)
+                let handle = matched_val
+                    .value
+                    .ok_or_else(|| anyhow!("Enum value is void"))?;
+
+                let tag_val = self
+                    .builder
+                    .build_call(get_tag_fn, &[handle.into()], "tag")?
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+                    .into_int_value();
+
+                let layout = self
+                    .enum_layout(enum_name)
                     .ok_or_else(|| anyhow!("Enum layout not found for {}", enum_name))?;
-                let expected_tag = layout.tag_of(variant)
+                let expected_tag = layout
+                    .tag_of(variant)
                     .ok_or_else(|| anyhow!("Variant {} not found in {}", variant, enum_name))?;
-                
-                let expected_tag_val = self.context.i64_type().const_int(expected_tag as u64, false);
+
+                let expected_tag_val = self
+                    .context
+                    .i64_type()
+                    .const_int(expected_tag as u64, false);
                 let tag_match = self.builder.build_int_compare(
-                    IntPredicate::EQ, 
-                    tag_val, 
-                    expected_tag_val, 
-                    "tag_match"
+                    IntPredicate::EQ,
+                    tag_val,
+                    expected_tag_val,
+                    "tag_match",
                 )?;
-                
+
                 if fields.is_empty() {
-                    self.builder.build_conditional_branch(tag_match, success_bb, fail_bb)?;
+                    self.builder
+                        .build_conditional_branch(tag_match, success_bb, fail_bb)?;
                 } else {
                     let field_check_bb = self.context.append_basic_block(
-                        self.builder.get_insert_block().unwrap().get_parent().unwrap(),
-                        "enum_field_check"
+                        self.builder
+                            .get_insert_block()
+                            .unwrap()
+                            .get_parent()
+                            .unwrap(),
+                        "enum_field_check",
                     );
-                    self.builder.build_conditional_branch(tag_match, field_check_bb, fail_bb)?;
+                    self.builder
+                        .build_conditional_branch(tag_match, field_check_bb, fail_bb)?;
                     self.builder.position_at_end(field_check_bb);
-                    
+
                     for (field_idx, field_pattern) in fields.iter().enumerate() {
-                        let get_field_fn = self.get_or_declare_ffi_function("runtime.enum.get_field")?;
-                        let field_idx_val = self.context.i64_type().const_int(field_idx as u64, false);
-                        let field_val = self.builder.build_call(
-                            get_field_fn, 
-                            &[handle.into(), field_idx_val.into()], 
-                            "field"
-                        )?.try_as_basic_value().left().unwrap();
-                        
+                        let get_field_fn =
+                            self.get_or_declare_ffi_function("runtime.enum.get_field")?;
+                        let field_idx_val =
+                            self.context.i64_type().const_int(field_idx as u64, false);
+                        let field_val = self
+                            .builder
+                            .build_call(
+                                get_field_fn,
+                                &[handle.into(), field_idx_val.into()],
+                                "field",
+                            )?
+                            .try_as_basic_value()
+                            .left()
+                            .unwrap();
+
                         let field_eval = EvaluatedValue::with_value(field_val, OtterType::Opaque);
-                        
+
                         let next_field_bb = if field_idx < fields.len() - 1 {
                             self.context.append_basic_block(
-                                self.builder.get_insert_block().unwrap().get_parent().unwrap(),
-                                &format!("enum_field_check_{}", field_idx + 1)
+                                self.builder
+                                    .get_insert_block()
+                                    .unwrap()
+                                    .get_parent()
+                                    .unwrap(),
+                                &format!("enum_field_check_{}", field_idx + 1),
                             )
                         } else {
                             success_bb
                         };
-                        
-                        self.compile_pattern_match(field_pattern, &field_eval, next_field_bb, fail_bb, ctx)?;
-                        
+
+                        self.compile_pattern_match(
+                            field_pattern,
+                            &field_eval,
+                            next_field_bb,
+                            fail_bb,
+                            ctx,
+                        )?;
+
                         if field_idx < fields.len() - 1 {
                             self.builder.position_at_end(next_field_bb);
                         }
                     }
                 }
-                
+
                 Ok(())
             }
-            Pattern::Struct { name: _struct_name, fields } => {
+            Pattern::Struct {
+                name: _struct_name,
+                fields,
+            } => {
                 if fields.is_empty() {
                     self.builder.build_unconditional_branch(success_bb)?;
                 } else {
@@ -235,98 +375,149 @@ impl<'ctx> Compiler<'ctx> {
             }
             Pattern::Array { patterns, rest } => {
                 let get_len_fn = self.get_or_declare_ffi_function("runtime.list.length")?;
-                let handle = matched_val.value.ok_or_else(|| anyhow!("Array value is void"))?;
-                let len_val = self.builder.build_call(get_len_fn, &[handle.into()], "len")?
-                    .try_as_basic_value().left().unwrap().into_int_value();
-                
+                let handle = matched_val
+                    .value
+                    .ok_or_else(|| anyhow!("Array value is void"))?;
+                let len_val = self
+                    .builder
+                    .build_call(get_len_fn, &[handle.into()], "len")?
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+                    .into_int_value();
+
                 let min_len = patterns.len() as u64;
-                
+
                 let expected_len = self.context.i64_type().const_int(min_len, false);
                 let len_check = if rest.is_some() {
-                    self.builder.build_int_compare(IntPredicate::UGE, len_val, expected_len, "len_check")?
+                    self.builder.build_int_compare(
+                        IntPredicate::UGE,
+                        len_val,
+                        expected_len,
+                        "len_check",
+                    )?
                 } else {
-                    self.builder.build_int_compare(IntPredicate::EQ, len_val, expected_len, "len_check")?
+                    self.builder.build_int_compare(
+                        IntPredicate::EQ,
+                        len_val,
+                        expected_len,
+                        "len_check",
+                    )?
                 };
-                
+
                 let elem_check_bb = self.context.append_basic_block(
-                    self.builder.get_insert_block().unwrap().get_parent().unwrap(),
-                    "array_elem_check"
+                    self.builder
+                        .get_insert_block()
+                        .unwrap()
+                        .get_parent()
+                        .unwrap(),
+                    "array_elem_check",
                 );
-                self.builder.build_conditional_branch(len_check, elem_check_bb, fail_bb)?;
+                self.builder
+                    .build_conditional_branch(len_check, elem_check_bb, fail_bb)?;
                 self.builder.position_at_end(elem_check_bb);
-                
+
                 for (idx, elem_pattern) in patterns.iter().enumerate() {
                     let get_elem_fn = self.get_or_declare_ffi_function("runtime.list.get")?;
                     let idx_val = self.context.i64_type().const_int(idx as u64, false);
-                    let elem_val = self.builder.build_call(
-                        get_elem_fn,
-                        &[handle.into(), idx_val.into()],
-                        "elem"
-                    )?.try_as_basic_value().left().unwrap();
-                    
+                    let elem_val = self
+                        .builder
+                        .build_call(get_elem_fn, &[handle.into(), idx_val.into()], "elem")?
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap();
+
                     let elem_eval = EvaluatedValue::with_value(elem_val, OtterType::Opaque);
-                    
+
                     let next_bb = if idx < patterns.len() - 1 || rest.is_some() {
                         self.context.append_basic_block(
-                            self.builder.get_insert_block().unwrap().get_parent().unwrap(),
-                            &format!("array_elem_check_{}", idx + 1)
+                            self.builder
+                                .get_insert_block()
+                                .unwrap()
+                                .get_parent()
+                                .unwrap(),
+                            &format!("array_elem_check_{}", idx + 1),
                         )
                     } else {
                         success_bb
                     };
-                    
+
                     self.compile_pattern_match(elem_pattern, &elem_eval, next_bb, fail_bb, ctx)?;
-                    
+
                     if idx < patterns.len() - 1 || rest.is_some() {
                         self.builder.position_at_end(next_bb);
                     }
                 }
-                
+
                 if let Some(rest_name) = rest {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
-                    let alloca = self.create_entry_block_alloca(function, rest_name, OtterType::List)?;
+                    let function = self
+                        .builder
+                        .get_insert_block()
+                        .unwrap()
+                        .get_parent()
+                        .unwrap();
+                    let alloca =
+                        self.create_entry_block_alloca(function, rest_name, OtterType::List)?;
                     self.builder.build_store(alloca, handle)?;
-                    ctx.insert(rest_name.clone(), crate::codegen::llvm::compiler::types::Variable {
-                        ptr: alloca,
-                        ty: OtterType::List,
-                    });
+                    ctx.insert(
+                        rest_name.clone(),
+                        crate::codegen::llvm::compiler::types::Variable {
+                            ptr: alloca,
+                            ty: OtterType::List,
+                        },
+                    );
                     self.builder.build_unconditional_branch(success_bb)?;
                 }
-                
+
                 Ok(())
             }
         }
     }
-    
-    fn build_equality_check(&mut self, lhs: &EvaluatedValue<'ctx>, rhs: &EvaluatedValue<'ctx>) -> Result<IntValue<'ctx>> {
+
+    fn build_equality_check(
+        &mut self,
+        lhs: &EvaluatedValue<'ctx>,
+        rhs: &EvaluatedValue<'ctx>,
+    ) -> Result<IntValue<'ctx>> {
         match lhs.ty {
             OtterType::I64 => {
                 let l = lhs.value.unwrap().into_int_value();
                 let r = rhs.value.unwrap().into_int_value();
-                Ok(self.builder.build_int_compare(IntPredicate::EQ, l, r, "eq")?)
+                Ok(self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, l, r, "eq")?)
             }
             OtterType::F64 => {
                 let l = lhs.value.unwrap().into_float_value();
                 let r = rhs.value.unwrap().into_float_value();
-                Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "eq")?)
+                Ok(self
+                    .builder
+                    .build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "eq")?)
             }
             OtterType::Bool => {
                 let l = lhs.value.unwrap().into_int_value();
                 let r = rhs.value.unwrap().into_int_value();
-                Ok(self.builder.build_int_compare(IntPredicate::EQ, l, r, "eq")?)
+                Ok(self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, l, r, "eq")?)
             }
             OtterType::Str => {
                 let left_ptr = self.ensure_string_value(lhs.clone())?;
                 let right_ptr = self.ensure_string_value(rhs.clone())?;
                 let eq_fn = self.get_or_declare_ffi_function("std.strings.equal")?;
-                let res = self.builder.build_call(eq_fn, &[left_ptr.into(), right_ptr.into()], "str_eq")?
-                    .try_as_basic_value().left().unwrap().into_int_value();
+                let res = self
+                    .builder
+                    .build_call(eq_fn, &[left_ptr.into(), right_ptr.into()], "str_eq")?
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+                    .into_int_value();
                 Ok(res)
             }
             _ => bail!("Equality check not implemented for type {:?}", lhs.ty),
         }
     }
-    
+
     fn lower_block_expression(
         &mut self,
         block: &Node<Block>,
@@ -344,8 +535,11 @@ impl<'ctx> Compiler<'ctx> {
                 self.lower_statement(stmt.as_ref(), function, ctx)?;
             }
         }
-        
-        Ok(EvaluatedValue { ty: OtterType::Unit, value: None })
+
+        Ok(EvaluatedValue {
+            ty: OtterType::Unit,
+            value: None,
+        })
     }
 
     fn eval_fstring_expr(
@@ -358,23 +552,20 @@ impl<'ctx> Compiler<'ctx> {
         };
 
         let mut result = self.eval_literal(&Literal::String("".to_string()))?;
-        
+
         for part in parts {
             let part_val = match part.as_ref() {
                 ast::nodes::FStringPart::Text(s) => {
                     self.eval_literal(&Literal::String(s.clone()))?
                 }
-                ast::nodes::FStringPart::Expr(e) => {
-                    self.eval_expr(e.as_ref(), ctx)?
-                }
+                ast::nodes::FStringPart::Expr(e) => self.eval_expr(e.as_ref(), ctx)?,
             };
-            
+
             result = self.build_string_concat(result, part_val)?;
         }
-        
+
         Ok(result)
     }
-
 
     fn eval_literal(&mut self, lit: &Literal) -> Result<EvaluatedValue<'ctx>> {
         match lit {
@@ -420,27 +611,62 @@ impl<'ctx> Compiler<'ctx> {
 
         if lhs.ty == OtterType::Str && rhs.ty == OtterType::Str {
             return match op {
-                BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Gt | BinaryOp::LtEq | BinaryOp::GtEq => {
+                BinaryOp::Eq
+                | BinaryOp::Ne
+                | BinaryOp::Lt
+                | BinaryOp::Gt
+                | BinaryOp::LtEq
+                | BinaryOp::GtEq => {
                     let is_equal = self.build_equality_check(&lhs, &rhs)?;
                     match op {
-                        BinaryOp::Eq => Ok(EvaluatedValue::with_value(is_equal.into(), OtterType::Bool)),
+                        BinaryOp::Eq => {
+                            Ok(EvaluatedValue::with_value(is_equal.into(), OtterType::Bool))
+                        }
                         BinaryOp::Ne => {
                             let not_equal = self.builder.build_not(is_equal, "ne")?;
-                            Ok(EvaluatedValue::with_value(not_equal.into(), OtterType::Bool))
+                            Ok(EvaluatedValue::with_value(
+                                not_equal.into(),
+                                OtterType::Bool,
+                            ))
                         }
                         _ => {
                             let cmp_fn = self.get_or_declare_ffi_function("std.strings.compare")?;
                             let left_ptr = self.ensure_string_value(lhs.clone())?;
                             let right_ptr = self.ensure_string_value(rhs.clone())?;
-                            let cmp_result = self.builder.build_call(cmp_fn, &[left_ptr.into(), right_ptr.into()], "strcmp")?
-                                .try_as_basic_value().left().unwrap().into_int_value();
+                            let cmp_result = self
+                                .builder
+                                .build_call(cmp_fn, &[left_ptr.into(), right_ptr.into()], "strcmp")?
+                                .try_as_basic_value()
+                                .left()
+                                .unwrap()
+                                .into_int_value();
                             let zero = self.context.i64_type().const_zero();
-                            
+
                             let result = match op {
-                                BinaryOp::Lt => self.builder.build_int_compare(IntPredicate::SLT, cmp_result, zero, "lt")?,
-                                BinaryOp::Gt => self.builder.build_int_compare(IntPredicate::SGT, cmp_result, zero, "gt")?,
-                                BinaryOp::LtEq => self.builder.build_int_compare(IntPredicate::SLE, cmp_result, zero, "le")?,
-                                BinaryOp::GtEq => self.builder.build_int_compare(IntPredicate::SGE, cmp_result, zero, "ge")?,
+                                BinaryOp::Lt => self.builder.build_int_compare(
+                                    IntPredicate::SLT,
+                                    cmp_result,
+                                    zero,
+                                    "lt",
+                                )?,
+                                BinaryOp::Gt => self.builder.build_int_compare(
+                                    IntPredicate::SGT,
+                                    cmp_result,
+                                    zero,
+                                    "gt",
+                                )?,
+                                BinaryOp::LtEq => self.builder.build_int_compare(
+                                    IntPredicate::SLE,
+                                    cmp_result,
+                                    zero,
+                                    "le",
+                                )?,
+                                BinaryOp::GtEq => self.builder.build_int_compare(
+                                    IntPredicate::SGE,
+                                    cmp_result,
+                                    zero,
+                                    "ge",
+                                )?,
                                 _ => unreachable!(),
                             };
                             Ok(EvaluatedValue::with_value(result.into(), OtterType::Bool))
@@ -662,6 +888,7 @@ impl<'ctx> Compiler<'ctx> {
             OtterType::Opaque => Ok(Some(self.context.i64_type().into())),
             OtterType::List => Ok(Some(self.context.i64_type().into())),
             OtterType::Map => Ok(Some(self.context.i64_type().into())),
+            OtterType::Struct(id) => Ok(Some(self.struct_info(id).ty.into())),
         }
     }
 
@@ -765,12 +992,30 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
+    fn cast_argument_for_call(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        from_ty: OtterType,
+        param_type: &BasicTypeEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        if from_ty == OtterType::F64 && param_type.is_int_type() {
+            let float_val = value.into_float_value();
+            Ok(self
+                .builder
+                .build_float_to_signed_int(float_val, param_type.into_int_type(), "ftoi")?
+                .into())
+        } else {
+            Ok(value)
+        }
+    }
+
     fn eval_call_expr(
         &mut self,
         expr: &Expr,
         ctx: &mut FunctionContext<'ctx>,
     ) -> Result<EvaluatedValue<'ctx>> {
         if let Expr::Call { func, args } = expr {
+            let mut implicit_self: Option<EvaluatedValue<'ctx>> = None;
             if let Some(enum_value) =
                 self.try_build_enum_constructor(expr, func.as_ref().as_ref(), args, ctx)?
             {
@@ -782,12 +1027,55 @@ impl<'ctx> Compiler<'ctx> {
                 Expr::Identifier(name) => name.clone(),
                 Expr::Member { object, field } => {
                     if let Expr::Identifier(enum_name) = object.as_ref().as_ref() {
-                        if let Some(enum_value) = self.try_build_enum_from_member(enum_name, field, args, ctx)? {
+                        if let Some(enum_value) =
+                            self.try_build_enum_from_member(enum_name, field, args, ctx)?
+                        {
                             return Ok(enum_value);
                         }
                         format!("{}.{}", enum_name, field)
+                    } else if let Some(OtterType::Struct(struct_id)) =
+                        self.struct_type_from_expr(object.as_ref().as_ref())
+                    {
+                        let self_value = self.eval_expr(object.as_ref().as_ref(), ctx)?;
+                        if self_value.value.is_none() {
+                            bail!("cannot call method '{}' without value", field);
+                        }
+                        if let Some(method_name) = self.resolve_struct_method_name(struct_id, field)
+                        {
+                            implicit_self = Some(self_value);
+                            method_name
+                        } else {
+                            bail!(
+                                "struct method '{}.{}' not found",
+                                self.struct_info(struct_id).name,
+                                field
+                            );
+                        }
+                    } else if let Some(func_name) =
+                        self.resolve_member_function_name(object.as_ref().as_ref(), field)
+                    {
+                        func_name
                     } else {
-                        bail!("Complex member expressions not yet supported");
+                        let evaluated = self.eval_expr(object.as_ref().as_ref(), ctx)?;
+                        if evaluated.value.is_none() {
+                            bail!("cannot call member '{}' without value", field);
+                        }
+                        if let OtterType::Struct(struct_id) = evaluated.ty {
+                            if let Some(method_name) =
+                                self.resolve_struct_method_name(struct_id, field)
+                            {
+                                implicit_self = Some(evaluated);
+                                method_name
+                            } else {
+                                bail!(
+                                    "struct method '{}.{}' not found",
+                                    self.struct_info(struct_id).name,
+                                    field
+                                );
+                            }
+                        } else {
+                            bail!("Complex member expressions not yet supported (call)");
+                        }
                     }
                 }
                 _ => bail!("Complex function expressions not yet supported"),
@@ -803,34 +1091,35 @@ impl<'ctx> Compiler<'ctx> {
             };
 
             // Get parameter types upfront to avoid borrow issues
-            let param_types = function.get_type().get_param_types();
+            let param_types: Vec<BasicTypeEnum> = function
+                .get_param_iter()
+                .map(|arg| arg.get_type())
+                .collect();
 
             // Evaluate arguments and convert types as needed
-            let mut arg_values = Vec::new();
+            let mut arg_values: Vec<BasicMetadataValueEnum> = Vec::new();
+            let mut param_offset = 0;
+
+            if let Some(self_arg) = implicit_self {
+                let v = self_arg
+                    .value
+                    .ok_or_else(|| anyhow!("Cannot pass unit value as self"))?;
+                let param_type = param_types
+                    .get(0)
+                    .ok_or_else(|| anyhow!("Method '{}' missing self parameter", func_name))?;
+                let converted = self.cast_argument_for_call(v, self_arg.ty, param_type)?;
+                arg_values.push(converted.into());
+                param_offset = 1;
+            }
+
             for (i, arg) in args.iter().enumerate() {
                 let arg_val = self.eval_expr(arg.as_ref(), ctx)?;
                 if let Some(v) = arg_val.value {
-                    // Get expected parameter type from function signature
                     let param_type = param_types
-                        .get(i)
+                        .get(i + param_offset)
                         .ok_or_else(|| anyhow!("Too many arguments for function {}", func_name))?;
-
-                    // Convert if needed (e.g., F64 to I64)
-                    let converted_val = if arg_val.ty == OtterType::F64 && param_type.is_int_type()
-                    {
-                        // Convert F64 to I64
-                        self.builder
-                            .build_float_to_signed_int(
-                                v.into_float_value(),
-                                self.context.i64_type(),
-                                "ftoi",
-                            )?
-                            .into()
-                    } else {
-                        v.into()
-                    };
-
-                    arg_values.push(converted_val);
+                    let converted = self.cast_argument_for_call(v, arg_val.ty, param_type)?;
+                    arg_values.push(converted.into());
                 } else {
                     bail!("Cannot pass unit value as argument");
                 }
@@ -1051,30 +1340,31 @@ impl<'ctx> Compiler<'ctx> {
                 return Ok(None);
             }
             let tag = tag.unwrap();
-            
+
             let mut evaluated_args = Vec::with_capacity(args.len());
             for arg in args {
                 evaluated_args.push(self.eval_expr(arg.as_ref(), ctx)?);
             }
-            
-            let field_types: Vec<TypeInfo> = evaluated_args.iter().map(|val| {
-                match val.ty {
+
+            let field_types: Vec<TypeInfo> = evaluated_args
+                .iter()
+                .map(|val| match val.ty {
                     OtterType::I64 => TypeInfo::I64,
                     OtterType::F64 => TypeInfo::F64,
                     OtterType::Bool => TypeInfo::Bool,
                     OtterType::Str => TypeInfo::Str,
                     _ => TypeInfo::Unknown,
-                }
-            }).collect();
-            
+                })
+                .collect();
+
             let value = self.create_enum_instance(
                 enum_name,
                 variant_name,
                 tag,
                 &field_types,
-                evaluated_args
+                evaluated_args,
             )?;
-            
+
             return Ok(Some(value));
         }
         Ok(None)
@@ -1101,6 +1391,43 @@ impl<'ctx> Compiler<'ctx> {
             }
         }
         Ok(None)
+    }
+
+    fn module_path_from_expr(&self, expr: &Expr) -> Option<String> {
+        self.expr_type(expr).and_then(|ty| match ty {
+            TypeInfo::Module(name) => Some(name.clone()),
+            _ => None,
+        })
+    }
+
+    fn resolve_member_function_name(&self, object: &Expr, field: &str) -> Option<String> {
+        if let Some(module) = self.module_path_from_expr(object) {
+            let candidate = format!("{}.{}", module, field);
+            if self.symbol_registry.contains(&candidate)
+                || self.declared_functions.contains_key(&candidate)
+            {
+                return Some(candidate);
+            }
+        }
+
+        let prefix = self.flatten_member_chain(object)?;
+        let candidate = format!("{}.{}", prefix, field);
+        if self.symbol_registry.contains(&candidate) {
+            Some(candidate)
+        } else {
+            None
+        }
+    }
+
+    fn flatten_member_chain(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Identifier(name) => Some(name.clone()),
+            Expr::Member { object, field } => {
+                let prefix = self.flatten_member_chain(object.as_ref().as_ref())?;
+                Some(format!("{}.{}", prefix, field))
+            }
+            _ => None,
+        }
     }
 
     fn build_enum_value_from_type(

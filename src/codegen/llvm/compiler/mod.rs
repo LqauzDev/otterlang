@@ -8,19 +8,26 @@ use inkwell::context::Context as InkwellContext;
 use inkwell::module::Module;
 use inkwell::passes::{PassBuilderOptions, PassManager};
 use inkwell::targets::TargetMachine;
-use inkwell::types::{BasicType, BasicTypeEnum, PointerType};
+use inkwell::types::{BasicType, BasicTypeEnum, PointerType, StructType};
 use inkwell::values::{FunctionValue, PointerValue};
 
 use crate::codegen::llvm::bridges::prepare_rust_bridges;
 use crate::runtime::symbol_registry::SymbolRegistry;
 use crate::typecheck::{EnumLayout, TypeInfo};
-use ast::nodes::{Expr, Program, Statement};
+use ast::nodes::{Expr, Node, Program, Statement};
 
 pub mod expr;
 pub mod stmt;
 pub mod types;
 
 use self::types::{FunctionContext, OtterType};
+
+struct StructInfo<'ctx> {
+    name: String,
+    ty: StructType<'ctx>,
+    field_indices: HashMap<String, usize>,
+    field_types: Vec<OtterType>,
+}
 
 pub struct Compiler<'ctx> {
     pub(crate) context: &'ctx InkwellContext,
@@ -37,6 +44,8 @@ pub struct Compiler<'ctx> {
     pub(crate) function_defaults: HashMap<String, Vec<Option<Expr>>>,
     #[allow(dead_code)]
     pub(crate) lambda_counter: AtomicUsize,
+    struct_ids: HashMap<String, u32>,
+    struct_infos: Vec<StructInfo<'ctx>>,
     pub cached_ir: Option<String>,
 }
 
@@ -75,6 +84,8 @@ impl<'ctx> Compiler<'ctx> {
             enum_layouts,
             function_defaults: HashMap::new(),
             lambda_counter: AtomicUsize::new(0),
+            struct_ids: HashMap::new(),
+            struct_infos: Vec::new(),
             cached_ir: None,
         }
     }
@@ -92,6 +103,70 @@ impl<'ctx> Compiler<'ctx> {
         self.enum_layouts.get(name)
     }
 
+    fn ensure_struct_info(&mut self, name: &str) -> (u32, StructType<'ctx>) {
+        if let Some(&id) = self.struct_ids.get(name) {
+            let ty = self.struct_infos[id as usize].ty;
+            return (id, ty);
+        }
+
+        let struct_type = self.context.opaque_struct_type(name);
+        let id = self.struct_infos.len() as u32;
+        self.struct_ids.insert(name.to_string(), id);
+        self.struct_infos.push(StructInfo {
+            name: name.to_string(),
+            ty: struct_type,
+            field_indices: HashMap::new(),
+            field_types: Vec::new(),
+        });
+        (id, struct_type)
+    }
+
+    fn struct_info(&self, id: u32) -> &StructInfo<'ctx> {
+        &self.struct_infos[id as usize]
+    }
+
+    fn struct_id(&self, name: &str) -> Option<u32> {
+        self.struct_ids.get(name).copied()
+    }
+
+    fn struct_info_by_name(&self, name: &str) -> Option<(u32, &StructInfo<'ctx>)> {
+        let id = self.struct_id(name)?;
+        Some((id, self.struct_info(id)))
+    }
+
+    pub(crate) fn struct_type_from_expr(&self, expr: &Expr) -> Option<OtterType> {
+        if let Some(ty) = self.expr_type(expr) {
+            if let TypeInfo::Struct { name, .. } = ty {
+                if let Some(id) = self.struct_id(name) {
+                    return Some(OtterType::Struct(id));
+                }
+            }
+        }
+        None
+    }
+
+    fn rewrite_method_self_param(&self, method_func: &mut ast::nodes::Function, struct_name: &str) {
+        if let Some(first_param) = method_func.params.first_mut() {
+            if let Some(ty) = &first_param.as_ref().ty {
+                if matches!(ty.as_ref(), ast::nodes::Type::Simple(name) if name == "Self") {
+                    let span = *ty.span();
+                    let replacement = ast::nodes::Type::Simple(struct_name.to_string());
+                    first_param.as_mut().ty = Some(Node::new(replacement, span));
+                }
+            }
+        }
+    }
+
+    fn resolve_struct_method_name(&self, struct_id: u32, method: &str) -> Option<String> {
+        let info = self.struct_info(struct_id);
+        let candidate = format!("{}_{}", info.name, method);
+        if self.declared_functions.contains_key(&candidate) {
+            Some(candidate)
+        } else {
+            None
+        }
+    }
+
     pub fn compile_module(&mut self, program: &Program) -> Result<()> {
         // Prepare Rust bridges
         let _libraries = prepare_rust_bridges(program, self.symbol_registry)?;
@@ -102,24 +177,34 @@ impl<'ctx> Compiler<'ctx> {
                 Statement::Function(func) => {
                     self.register_function_prototype(func.as_ref())?;
                 }
-                Statement::Struct { name, fields, methods, .. } => {
-                    // Create opaque struct type
-                    let struct_type = self.context.opaque_struct_type(name);
-                    
-                    // Map field types
+                Statement::Struct {
+                    name,
+                    fields,
+                    methods,
+                    ..
+                } => {
+                    let (struct_id, struct_type) = self.ensure_struct_info(name);
+
+                    let mut field_layout = Vec::new();
+                    let mut field_indices = HashMap::new();
                     let mut field_types = Vec::new();
-                    for (_, ty) in fields {
-                        field_types.push(self.map_ast_type(ty.as_ref())?);
+                    for (idx, (field_name, ty)) in fields.iter().enumerate() {
+                        field_layout.push(self.map_ast_type(ty.as_ref())?);
+                        field_indices.insert(field_name.clone(), idx);
+                        field_types.push(self.otter_type_from_annotation(ty.as_ref()));
                     }
-                    
-                    // Set body
-                    struct_type.set_body(&field_types, false);
-                    
+
+                    struct_type.set_body(&field_layout, false);
+                    if let Some(info) = self.struct_infos.get_mut(struct_id as usize) {
+                        info.field_indices = field_indices;
+                        info.field_types = field_types;
+                    }
+
                     // Register methods
                     for method in methods {
                         let mut method_func = method.as_ref().clone();
                         method_func.name = format!("{}_{}", name, method_func.name);
-                        
+                        self.rewrite_method_self_param(&mut method_func, name);
                         self.register_function_prototype(&method_func)?;
                     }
                 }
@@ -129,8 +214,19 @@ impl<'ctx> Compiler<'ctx> {
 
         // Second pass: compile function bodies
         for statement in &program.statements {
-            if let Statement::Function(func) = statement.as_ref() {
-                self.compile_function(func.as_ref())?;
+            match statement.as_ref() {
+                Statement::Function(func) => {
+                    self.compile_function(func.as_ref())?;
+                }
+                Statement::Struct { name, methods, .. } => {
+                    for method in methods {
+                        let mut method_func = method.as_ref().clone();
+                        method_func.name = format!("{}_{}", name, method_func.name);
+                        self.rewrite_method_self_param(&mut method_func, name);
+                        self.compile_function(&method_func)?;
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -213,9 +309,34 @@ impl<'ctx> Compiler<'ctx> {
                 "void" | "unit" => Ok(self.context.i8_type().into()), // Unit as i8 (or void for return)
                 "list" | "List" => Ok(self.context.i64_type().into()), // Opaque handle
                 "map" | "Map" => Ok(self.context.i64_type().into()),  // Opaque handle
-                _ => Ok(self.context.i64_type().into()), // Default to i64/opaque for unknown types
+                other => {
+                    if let Some(id) = self.struct_id(other) {
+                        Ok(self.struct_info(id).ty.into())
+                    } else {
+                        Ok(self.context.i64_type().into())
+                    }
+                }
             },
             ast::nodes::Type::Generic { .. } => Ok(self.context.i64_type().into()), // Treat generics as opaque handles
+        }
+    }
+
+    fn otter_type_from_annotation(&self, ty: &ast::nodes::Type) -> OtterType {
+        match ty {
+            ast::nodes::Type::Simple(name) => match name.as_str() {
+                "int" | "i64" => OtterType::I64,
+                "float" | "f64" => OtterType::F64,
+                "bool" => OtterType::Bool,
+                "string" | "str" => OtterType::Str,
+                "unit" | "void" => OtterType::Unit,
+                "list" | "List" => OtterType::List,
+                "map" | "Map" => OtterType::Map,
+                other => self
+                    .struct_id(other)
+                    .map(OtterType::Struct)
+                    .unwrap_or(OtterType::Opaque),
+            },
+            ast::nodes::Type::Generic { .. } => OtterType::Opaque,
         }
     }
 
@@ -238,6 +359,14 @@ impl<'ctx> Compiler<'ctx> {
             }
             BasicTypeEnum::PointerType(ptr_type) if ptr_type == self.string_ptr_type => {
                 OtterType::Str
+            }
+            BasicTypeEnum::StructType(struct_type) => {
+                if let Some(name) = struct_type.get_name() {
+                    if let Some(id) = self.struct_id(name.to_str().unwrap_or_default()) {
+                        return OtterType::Struct(id);
+                    }
+                }
+                OtterType::Opaque
             }
             _ => OtterType::Opaque,
         }
@@ -348,7 +477,7 @@ impl<'ctx> Compiler<'ctx> {
             } else {
                 let ret_ty = func.ret_ty.as_ref().unwrap();
                 let llvm_ty = self.map_ast_type(ret_ty.as_ref())?;
-                
+
                 let default_val: inkwell::values::BasicValueEnum = match llvm_ty {
                     BasicTypeEnum::IntType(t) => t.const_zero().into(),
                     BasicTypeEnum::FloatType(t) => t.const_zero().into(),
@@ -358,7 +487,7 @@ impl<'ctx> Compiler<'ctx> {
                     BasicTypeEnum::VectorType(t) => t.const_zero().into(),
                     _ => unimplemented!("Unsupported return type for default value generation"),
                 };
-                
+
                 self.builder.build_return(Some(&default_val))?;
             }
         }
@@ -387,12 +516,13 @@ impl<'ctx> Compiler<'ctx> {
             OtterType::I64 => self.context.i64_type().into(),
             OtterType::F64 => self.context.f64_type().into(),
             OtterType::Bool => self.context.bool_type().into(),
+            OtterType::I32 => self.context.i32_type().into(),
             OtterType::Str => self.string_ptr_type.into(),
             OtterType::Unit => self.context.i8_type().into(), // Unit as i8
             OtterType::List => self.context.i64_type().into(), // Opaque handle
             OtterType::Map => self.context.i64_type().into(), // Opaque handle
             OtterType::Opaque => self.context.i64_type().into(), // Opaque handle
-            _ => self.context.i64_type().into(),              // Default to i64
+            OtterType::Struct(id) => self.struct_info(id).ty.into(),
         };
 
         Ok(builder.build_alloca(llvm_type, name)?)

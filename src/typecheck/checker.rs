@@ -1256,21 +1256,21 @@ impl TypeChecker {
                         {
                             Ok(TypeInfo::Module(name.clone()))
                         } else {
-                            Err(TypeError::new(format!("undefined variable: {}", name))
+                            self.errors.push(TypeError::new(format!("undefined variable: {}", name))
                                 .with_hint(format!(
                                     "did you mean to declare it with `let {}`?",
                                     name
                                 ))
                                 .with_help("Variables must be declared before use".to_string())
-                                .with_span(*span)
-                                .into())
+                                .with_span(*span));
+                            Ok(TypeInfo::Error)
                         }
                     } else {
-                        Err(TypeError::new(format!("undefined variable: {}", name))
+                        self.errors.push(TypeError::new(format!("undefined variable: {}", name))
                             .with_hint(format!("did you mean to declare it with `let {}`?", name))
                             .with_help("Variables must be declared before use".to_string())
-                            .with_span(*span)
-                            .into())
+                            .with_span(*span));
+                        Ok(TypeInfo::Error)
                     }
                 }
                 Expr::Binary { op, left, right } => {
@@ -1437,11 +1437,13 @@ impl TypeChecker {
                     let span = func.span();
                     let func_type = match func.as_ref().as_ref() {
                         Expr::Identifier(name) => {
-                            self.context.get_function(name).cloned().ok_or_else(|| {
-                                let err = TypeError::new(format!("undefined function: {}", name))
-                                    .with_span(*span);
-                                anyhow::Error::from(err)
-                            })?
+                            if let Some(func) = self.context.get_function(name).cloned() {
+                                func
+                            } else {
+                                self.errors.push(TypeError::new(format!("undefined function: {}", name))
+                                    .with_span(*span));
+                                TypeInfo::Error
+                            }
                         }
                         Expr::Member { object, field } => {
                             let full_name = self.build_member_path(object, field);
@@ -1543,28 +1545,61 @@ impl TypeChecker {
                     };
 
                     match func_type {
+                        TypeInfo::Error => Ok(TypeInfo::Error),
                         TypeInfo::Function {
                             params,
                             param_defaults,
                             return_type,
                         } => {
-                            if !params.is_empty() {
-                                let total_params = params.len();
+                            let mut params_slice: &[TypeInfo] = &params;
+                            let mut defaults_slice: &[bool] = &param_defaults;
+                            let has_signature = !params.is_empty() || !param_defaults.is_empty();
+
+                            if let Expr::Member { object, .. } = func.as_ref().as_ref()
+                                && let Ok(object_type) = self.infer_expr_type(object)
+                                && matches!(object_type, TypeInfo::Struct { .. })
+                                && !params.is_empty()
+                            {
+                                let self_param = &params[0];
+                                let self_matches = matches!(
+                                    self_param,
+                                    TypeInfo::Generic { base, args }
+                                        if base == "Self" && args.is_empty()
+                                ) || self_param.is_compatible_with(&object_type);
+
+                                if !self_matches {
+                                    self.errors.push(
+                                        TypeError::new(format!(
+                                            "method expects receiver of type {}, got {}",
+                                            self_param.display_name(),
+                                            object_type.display_name()
+                                        ))
+                                        .with_span(*span),
+                                    );
+                                    return Ok(TypeInfo::Error);
+                                }
+                                params_slice = &params[1..];
+                                defaults_slice = &param_defaults[1..];
+                            }
+
+                            if has_signature {
+                                let total_params = params_slice.len();
                                 let required_params =
-                                    param_defaults.iter().filter(|flag| !**flag).count();
+                                    defaults_slice.iter().filter(|flag| !**flag).count();
 
                                 if args.len() > total_params {
                                     self.errors.push(
-                                    TypeError::new(format!(
-                                        "function expects at most {} arguments, got {}",
-                                        total_params,
-                                        args.len()
-                                    ))
-                                    .with_hint(
-                                        "Remove extra arguments or verify the function signature"
-                                            .to_string(),
-                                    ).with_span(*span),
-                                );
+                                        TypeError::new(format!(
+                                            "function expects at most {} arguments, got {}",
+                                            total_params,
+                                            args.len()
+                                        ))
+                                        .with_hint(
+                                            "Remove extra arguments or verify the function signature"
+                                                .to_string(),
+                                        )
+                                        .with_span(*span),
+                                    );
                                     return Ok(TypeInfo::Error);
                                 }
 
@@ -1585,23 +1620,25 @@ impl TypeChecker {
                                 }
 
                                 for (i, (arg, param_type)) in
-                                    args.iter().zip(params.iter()).enumerate()
+                                    args.iter().zip(params_slice.iter()).enumerate()
                                 {
                                     let arg_type = self.infer_expr_type(arg)?;
                                     if !arg_type.is_compatible_with(param_type) {
-                                        self.errors.push(TypeError::new(format!(
-                                            "argument {} type mismatch: expected {}, got {}",
-                                            i + 1,
-                                            param_type.display_name(),
-                                            arg_type.display_name()
-                                        ))
-                                        .with_span(*span)
-                                        .with_hint(format!(
-                                            "Argument {} should be of type `{}`",
-                                            i + 1,
-                                            param_type.display_name()
-                                        ))
-                                        .with_help("Check the function signature and ensure argument types match".to_string()));
+                                        self.errors.push(
+                                            TypeError::new(format!(
+                                                "argument {} type mismatch: expected {}, got {}",
+                                                i + 1,
+                                                param_type.display_name(),
+                                                arg_type.display_name()
+                                            ))
+                                            .with_span(*span)
+                                            .with_hint(format!(
+                                                "Argument {} should be of type `{}`",
+                                                i + 1,
+                                                param_type.display_name()
+                                            ))
+                                            .with_help("Check the function signature and ensure argument types match".to_string()),
+                                        );
                                     }
                                 }
                             } else {
@@ -1712,16 +1749,29 @@ impl TypeChecker {
                         && let Some(definition) = self.context.get_enum(enum_name)
                     {
                         if let Some(variant) = definition.variants.iter().find(|v| v.name == *field)
-                            && variant.fields.is_empty()
-                            && let Some(enum_type) = self.context.build_enum_type(enum_name, vec![])
                         {
-                            return Ok(enum_type);
+                            if variant.fields.is_empty()
+                                && let Some(enum_type) =
+                                    self.context.build_enum_type(enum_name, vec![])
+                            {
+                                return Ok(enum_type);
+                            }
+
+                            return Ok(TypeInfo::Function {
+                                params: vec![],
+                                param_defaults: vec![],
+                                return_type: Box::new(TypeInfo::Unknown),
+                            });
+                        } else {
+                            self.errors.push(
+                                TypeError::new(format!(
+                                    "enum '{}' has no variant '{}'",
+                                    enum_name, field
+                                ))
+                                .with_span(*span),
+                            );
+                            return Ok(TypeInfo::Error);
                         }
-                        return Ok(TypeInfo::Function {
-                            params: vec![],
-                            param_defaults: vec![],
-                            return_type: Box::new(TypeInfo::Unknown),
-                        });
                     }
 
                     let full_name = self.build_member_path(object, field);
