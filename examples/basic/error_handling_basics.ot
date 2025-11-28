@@ -1,0 +1,26 @@
+enum Result<T, E>:
+    Ok: (T)
+    Err: (E)
+
+fn divide(x: float, y: float) -> Result<float, string>:
+    if y == 0.0:
+        return Result.Err("Division by zero")
+    return Result.Ok(x / y)
+
+fn safe_divide(x: float, y: float) -> float | None:
+    match divide(x, y):
+        case Result.Ok(value):
+            return value
+        case Result.Err(error):
+            pass
+            return None
+
+fn main():
+    print("Error Handling Basics")
+    print("====================")
+    let result1 = safe_divide(10.0, 2.0)
+    if result1 != None:
+        print("Division by valid numbers works")
+    let result2 = safe_divide(10.0, 0.0)
+    if result2 == None:
+        print("Division by zero handled gracefully")

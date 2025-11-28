@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
-use super::types::{
-    BridgeMetadata, CallTemplate, DependencyConfig, FunctionSpec, TypeSpec,
-};
+use super::types::{BridgeMetadata, CallTemplate, DependencyConfig, FunctionSpec, TypeSpec};
 
 #[derive(Clone, Debug, Deserialize)]
 struct RawMetadata {

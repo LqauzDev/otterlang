@@ -17,15 +17,15 @@
 </div>
 
 <h3 align="center">
-  <a href="docs/LANGUAGE_SPEC.md"><b>Docs</b></a>
+  <a href="docs/LANGUAGE_SPEC.md"><b>Language Spec</b></a>
+  &nbsp;&#183;&nbsp;
+  <a href="docs/GETTING_STARTED.md"><b>Getting Started</b></a>
   &nbsp;&#183;&nbsp;
   <a href="docs/EXAMPLES.md"><b>Examples</b></a>
   &nbsp;&#183;&nbsp;
-  <a href="docs/INSTALLATION.md"><b>Installation</b></a>
-  &nbsp;&#183;&nbsp;
   <a href="https://discord.gg/y3b4QuvyFk" target="_blank">Discord</a>
   &nbsp;&#183;&nbsp;
-  <a href="docs/FFI_TRANSPARENT.md"><b>FFI Guide</b></a>
+  <a href="docs/FFI_GUIDE.md"><b>FFI Guide</b></a>
   &nbsp;&#183;&nbsp;
   <a href="CONTRIBUTING.md"><b>Contributing</b></a>
 </h3>
@@ -36,96 +36,88 @@
 git clone https://github.com/jonathanmagambo/otterlang.git
 cd otterlang
 
-# Using Nix (recommended)
-nix develop
+# Environment setup (requires Rust nightly + LLVM 18)
+nix develop            # recommended shell with all dependencies
 cargo +nightly build --release
 
 # Create and run your first program
 cat > hello.ot << 'EOF'
 fn main():
-    print("Hello from OtterLang!")
+    println("Hello from OtterLang!")
 EOF
 
-otter run hello.ot
+./target/release/otter run hello.ot
 ```
 
-## Installation
+See the [Getting Started Guide](docs/GETTING_STARTED.md) for detailed installation and usage instructions.
 
-See [Installation Guide](docs/INSTALLATION.md) for detailed setup instructions for all platforms.
+## Getting Started
 
-**Quick install with Nix:**
-```bash
-nix develop
-cargo +nightly build --release
-```
+1. Install Rust nightly (`rustup toolchain install nightly`) and ensure LLVM 18 is available (or simply run `nix develop`).
+2. Build the toolchain: `cargo +nightly build --release`.
+3. Run code with `otter run file.ot` or emit binaries with `otter build file.ot -o my_app`.
+
+The [Getting Started Guide](docs/GETTING_STARTED.md) expands on editor setup, cache usage, the REPL, and snapshot testing.
 
 ## Language Features
 
-OtterLang features a clean, indentation-based syntax with modern language features:
+OtterLang pairs indentation-aware syntax with modern language constructs:
 
-- **Pythonic syntax** - `fn` for functions, `class` for structs, `print()` for output
-- **Type system** - Static typing with type inference
-- **Enums and pattern matching** - Tagged unions with `match` expressions (pattern matching support pending)
-- **Exception handling** - `try/except/finally` blocks with zero-cost abstractions
-- **Concurrency** - `spawn` and `await` for async operations
-- **Transparent Rust FFI** - Use any Rust crate without manual bindings
-- **Garbage Collection** - Generational GC with `gc.alloc`, `gc.add_root`, `gc.remove_root` FFI functions](docs/LANGUAGE_SPEC.md).
+- **Whitespace-driven grammar** – no braces or semicolons, just `fn`, blocks, and meaningful indentation.
+- **Static typing with inference** – optional annotations, tuples, enums, and generics.
+- **Structured error handling** – `Result<T, E>` enum with pattern matching plus `panic`/`recover` utilities.
+- **Async task runtime** – `spawn` and `await` built on the Otter task scheduler.
+- **Generational GC** – explicit root APIs (`gc.alloc`, `gc.add_root`, `gc.remove_root`) keep FFI safe.
+- **Transparent Rust FFI** – import any crate with `use rust:crate_name` and call it directly.
 
 ### Transparent Rust FFI
 
-Automatically use any Rust crate without manual configuration. No manual bindings needed - just `use rust:crate_name` and start using it. See [docs/FFI_TRANSPARENT.md](docs/FFI_TRANSPARENT.md) for details.
+The compiler shells out to `cargo`/rustdoc, normalizes the crate’s public API, and generates a native bridge automatically. Import crates directly from OtterLang (`use rust:serde::{json}`) without touching build scripts. See the [FFI Guide](docs/FFI_GUIDE.md) for configuration, caching, and troubleshooting tips.
 
 ### Standard Library
 
-Built-in modules include `core` (Option, Result), `math`, `io`, `time`, and more. See the [API Reference](docs/API_REFERENCE.md) for complete documentation.
+Built-in modules cover IO, math, JSON, tasks, runtime helpers, strings, networking, testing, and more. The [API Reference](docs/API_REFERENCE.md) documents every exported function.
 
 
-## CLI Commands
+## Command Line Interface
 
-See [CLI Reference](docs/CLI.md) for all available commands.
+The `otter` binary drives every workflow:
 
 ```bash
-otterlang run program.ot          # Run program
-otterlang build program.ot -o out # Build executable
-otterlang fmt                      # Format code
-otterlang repl                     # Start REPL
+otter run program.ot            # Compile + execute
+otter build program.ot -o app   # Emit native binary
+otter fmt                       # Format .ot files
+otter repl                      # Interactive REPL
+otter test path/to/tests        # Run snapshot-style tests
 ```
 
-OtterLang supports WebAssembly compilation. See [WebAssembly Support](docs/WEBASSEMBLY.md) for details.
+Cross-compilation targets (including WebAssembly) are described in [docs/WEBASSEMBLY.md](docs/WEBASSEMBLY.md).
 
 ## Examples
 
-See [Examples](docs/EXAMPLES.md) for a complete list of example programs.
+Browse [docs/EXAMPLES.md](docs/EXAMPLES.md) and the `examples/` tree for runnable snippets that stress the parser, runtime, and FFI bridge.
 
 ## VSCode Extension
 
-OtterLang includes a full-featured VSCode extension with syntax highlighting, LSP support, and IDE features. See [vscode-extension/README.md](vscode-extension/README.md) for installation and usage.
+We ship a VS Code extension with syntax highlighting, snippets, diagnostics, and an LSP server. Installation and release notes live in [vscode-extension/README.md](vscode-extension/README.md).
 
 ## Documentation
 
-- **[Installation Guide](docs/INSTALLATION.md)** - Setup instructions for all platforms
-- **[Language Specification](docs/LANGUAGE_SPEC.md)** - Complete language reference
-- **[CLI Reference](docs/CLI.md)** - Command-line interface documentation
-- **[WebAssembly Support](docs/WEBASSEMBLY.md)** - Compiling to WebAssembly
-- **[Examples](docs/EXAMPLES.md)** - Example programs
-- **[Tutorials](docs/TUTORIALS.md)** - Step-by-step guides
-- **[API Reference](docs/API_REFERENCE.md)** - Standard library documentation
-- **[FFI Guide](docs/FFI_TRANSPARENT.md)** - Using Rust crates from OtterLang
+- **[Language Specification](docs/LANGUAGE_SPEC.md)** – grammar, semantics, runtime model.
+- **[Getting Started](docs/GETTING_STARTED.md)** – installation, CLI walkthrough, first project.
+- **[Examples](docs/EXAMPLES.md)** – curated sample programs.
+- **[Tutorials](docs/TUTORIALS.md)** – guided walkthroughs for specific topics.
+- **[API Reference](docs/API_REFERENCE.md)** – stdlib module documentation.
+- **[FFI Guide](docs/FFI_GUIDE.md)** – transparent Rust crate import workflow.
+- **[WebAssembly](docs/WEBASSEMBLY.md)** – compiling OtterLang programs to WASM targets.
 
 ## Status
 
-**Early Access (v0.1.0)** - Experimental, not production-ready.
+**Early Access (v0.1.0)** – experimental tooling, expect sharp edges.
 
 ### Known Limitations
 
-- Type inference is limited (explicit types recommended)
-- Module system has some limitations
-- Requires LLVM 18 and Rust nightly (for FFI features)
-
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-MIT License - see [LICENSE](LICENSE).
+- `match` arms do not support guard clauses (`case value if ...`) yet; only direct patterns are accepted.
+- Transparent Rust FFI exposes functions and methods, but macros/proc-macros are ignored and structs/enums cross the boundary as opaque handles (see [FFI Guide](docs/FFI_GUIDE.md#limitations)).
+- WebAssembly builds run without filesystem access or full FFI support, so many stdlib modules (`io`, `net`, `task`) are unavailable in that target ([details](docs/WEBASSEMBLY.md#limitations)).
+- Building the toolchain currently requires LLVM 18 and Rust nightly because the bridge generator depends on nightly-only rustdoc features.

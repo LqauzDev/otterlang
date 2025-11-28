@@ -760,7 +760,6 @@ impl LexerState {
         let value = unsafe { std::str::from_utf8_unchecked(&self.source[start..self.offset]) };
         let kind = match value {
             "fn" => TokenKind::Fn,
-            "lambda" => TokenKind::Lambda,
             "let" => TokenKind::Let,
             "return" => TokenKind::Return,
             "if" => TokenKind::If,
@@ -774,7 +773,6 @@ impl LexerState {
             "is" => TokenKind::Is,
             "not" => TokenKind::Not,
             "use" => TokenKind::Use,
-            "from" => TokenKind::From,
             "as" => TokenKind::As,
             "pub" => TokenKind::Pub,
             "async" => TokenKind::Async,
@@ -787,10 +785,6 @@ impl LexerState {
             "print" => TokenKind::Print,
             "pass" => TokenKind::Pass,
             "None" | "none" => TokenKind::None,
-            "try" => TokenKind::Try,
-            "except" => TokenKind::Except,
-            "finally" => TokenKind::Finally,
-            "raise" => TokenKind::Raise,
             "struct" => TokenKind::Struct,
             "enum" => TokenKind::Enum,
             "and" => TokenKind::And,

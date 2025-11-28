@@ -205,6 +205,11 @@ fn register_enum_functions(registry: &SymbolRegistry) {
             signature: FfiSignature::new(vec![FfiType::I64], FfiType::I64),
         },
         FfiFunction {
+            name: "runtime.enum.get_tag".into(),
+            symbol: "otter_enum_get_tag".into(),
+            signature: FfiSignature::new(vec![FfiType::I64], FfiType::I64),
+        },
+        FfiFunction {
             name: "runtime.enum.field_count".into(),
             symbol: "otter_enum_get_field_count".into(),
             signature: FfiSignature::new(vec![FfiType::I64], FfiType::I64),

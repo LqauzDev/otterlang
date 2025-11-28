@@ -2,7 +2,7 @@ use chumsky::Stream;
 use chumsky::prelude::*;
 
 use ast::nodes::{
-    BinaryOp, Block, EnumVariant, ExceptHandler, Expr, FStringPart, Function, Literal, MatchArm,
+    BinaryOp, Block, EnumVariant, Expr, FStringPart, Function, Literal, MatchArm,
     Node, NumberLiteral, Param, Pattern, Program, Statement, Type, UnaryOp, UseImport,
 };
 
@@ -82,7 +82,6 @@ fn identifier_or_keyword_parser() -> impl Parser<TokenKind, String, Error = Simp
     select! {
         TokenKind::Identifier(name) => name,
         TokenKind::Fn => "fn".to_string(),
-        TokenKind::Lambda => "lambda".to_string(),
         TokenKind::Return => "return".to_string(),
         TokenKind::If => "if".to_string(),
         TokenKind::Else => "else".to_string(),
@@ -96,7 +95,6 @@ fn identifier_or_keyword_parser() -> impl Parser<TokenKind, String, Error = Simp
         TokenKind::Is => "is".to_string(),
         TokenKind::Not => "not".to_string(),
         TokenKind::Use => "use".to_string(),
-        TokenKind::From => "from".to_string(),
         TokenKind::As => "as".to_string(),
         TokenKind::Async => "async".to_string(),
         TokenKind::Await => "await".to_string(),
@@ -324,76 +322,8 @@ fn literal_expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<To
 
 fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>> {
     recursive(|expr| {
-        let lambda_param = identifier_parser()
-            .map_with_span(Node::new)
-            .then(choice((
-                just(TokenKind::Colon).ignore_then(type_parser()).map(Some),
-                empty().to(None),
-            )))
-            .then(choice((
-                just(TokenKind::Equals).ignore_then(expr.clone()).map(Some),
-                empty().to(None),
-            )))
-            .map_with_span(|((name, ty), default), span| {
-                Node::new(Param::new(name, ty, default), span)
-            })
-            .boxed();
-
-        let lambda_params = lambda_param
-            .separated_by(just(TokenKind::Comma))
-            .allow_trailing()
-            .delimited_by(just(TokenKind::LParen), just(TokenKind::RParen))
-            .or_not()
-            .map(|params| params.unwrap_or_default())
-            .boxed();
-
-        let lambda_ret_type = just(TokenKind::Arrow).ignore_then(type_parser()).or_not();
-
-        let lambda_block = recursive(|_block| {
-            let lambda_stmt = recursive(|_stmt| {
-                // Simplified statement parser for lambdas - just expressions and returns
-                let lambda_return_stmt = just(TokenKind::Return)
-                    .ignore_then(expr.clone().or_not())
-                    .map(Statement::Return);
-
-                choice((lambda_return_stmt, expr.clone().map(Statement::Expr)))
-                    .then_ignore(just(TokenKind::Newline).or_not())
-                    .boxed()
-            });
-
-            lambda_stmt
-                .map_with_span(Node::new)
-                .repeated()
-                .at_least(1)
-                .map_with_span(|stmts, span| Node::new(Block::new(stmts), span))
-        })
-        .boxed();
-
-        let lambda_keyword = just(TokenKind::Lambda);
-
-        let lambda_expr = lambda_keyword
-            .ignore_then(lambda_params)
-            .then(lambda_ret_type)
-            .then_ignore(just(TokenKind::Colon))
-            .then(just(TokenKind::Newline).ignore_then(lambda_block).or(
-                expr.clone().map_with_span(|expr, span| {
-                    Node::new(
-                        Block::new(vec![Node::new(Statement::Expr(expr), span.clone())]),
-                        span,
-                    )
-                }),
-            ))
-            .map_with_span(|((params, ret_ty), body), span| {
-                Node::new(
-                    Expr::Lambda {
-                        params,
-                        ret_ty,
-                        body,
-                    },
-                    span,
-                )
-            })
-            .boxed();
+        // Lambda expressions removed - use anonymous fn syntax instead
+        // fn(<args>) expr or fn(<args>): <stmts>
 
         let struct_init_pythonic = identifier_parser()
             .then(
@@ -464,7 +394,6 @@ fn expr_parser() -> impl Parser<TokenKind, Node<Expr>, Error = Simple<TokenKind>
 
         let atom = choice((
             literal_expr_parser(),
-            lambda_expr,
             struct_init_pythonic,
             identifier_parser().map_with_span(|name, span| Node::new(Expr::Identifier(name), span)),
             expr.clone()
@@ -1235,87 +1164,7 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             .map_with_span(|(cond, body), span| Node::new(Statement::While { cond, body }, span))
             .boxed();
 
-        let except_handler = just(TokenKind::Except)
-            .ignore_then(
-                // Optional type specification
-                type_parser().or_not(),
-            )
-            .then(
-                // Optional 'as name' clause
-                just(TokenKind::As)
-                    .ignore_then(identifier_parser())
-                    .or_not(),
-            )
-            .then_ignore(just(TokenKind::Colon))
-            .then_ignore(newline.clone())
-            .then(
-                stmt.clone()
-                    .repeated()
-                    .at_least(1)
-                    .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
-                    .map_with_span(|block, span| Node::new(Block::new(block), span)),
-            )
-            .map_with_span(|((exception_type, alias), body), span| {
-                Node::new(ExceptHandler::new(exception_type, alias, body), span)
-            })
-            .boxed();
-
-        let try_stmt = just(TokenKind::Try)
-            .ignore_then(just(TokenKind::Colon))
-            .ignore_then(newline.clone())
-            .then(
-                stmt.clone()
-                    .repeated()
-                    .at_least(1)
-                    .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
-                    .map_with_span(|block, span| Node::new(Block::new(block), span)),
-            )
-            .then(except_handler.repeated())
-            .then(
-                just(TokenKind::Else)
-                    .ignore_then(just(TokenKind::Colon))
-                    .ignore_then(newline.clone())
-                    .ignore_then(
-                        stmt.clone()
-                            .repeated()
-                            .at_least(1)
-                            .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
-                            .map_with_span(|block, span| Node::new(Block::new(block), span)),
-                    )
-                    .or_not(),
-            )
-            .then(
-                just(TokenKind::Finally)
-                    .ignore_then(just(TokenKind::Colon))
-                    .ignore_then(newline.clone())
-                    .ignore_then(
-                        stmt.clone()
-                            .repeated()
-                            .at_least(1)
-                            .delimited_by(just(TokenKind::Indent), just(TokenKind::Dedent))
-                            .map_with_span(|block, span| Node::new(Block::new(block), span)),
-                    )
-                    .or_not(),
-            )
-            .map_with_span(
-                |((((_try, body), handlers), else_block), finally_block), span| {
-                    Node::new(
-                        Statement::Try {
-                            body,
-                            handlers,
-                            else_block,
-                            finally_block,
-                        },
-                        span,
-                    )
-                },
-            )
-            .boxed();
-
-        let raise_stmt = just(TokenKind::Raise)
-            .ignore_then(expr.clone().or_not())
-            .map_with_span(|expr, span| Node::new(Statement::Raise(expr), span))
-            .boxed();
+        // Exception handling (try/except/finally/raise) removed - use Result<T, E> pattern matching instead
 
         choice((
             print_stmt,
@@ -1331,8 +1180,6 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
             break_stmt,
             continue_stmt,
             pass_stmt,
-            try_stmt,
-            raise_stmt,
             expr.clone()
                 .map_with_span(|expr, span| Node::new(Statement::Expr(expr), span)),
         ))

@@ -22,16 +22,22 @@ Beautiful, feature-rich VSCode extension for the OtterLang programming language!
 - **Word selection**: Smart word boundaries
 
 ### Snippets
-20+ built-in code snippets for common patterns:
-- `def` - Function definition
-- `class` - Class definition
+20+ built-in code snippets for common patterns (type the prefix and press Tab):
+- `def` - Function definition (`fn`)
 - `if`, `ife`, `ifel` - If statements
 - `for`, `forr` - For loops
 - `while` - While loop
-- `try`, `tryf` - Try-except blocks
+- `resfn` - Function returning Result type
+- `resmat` - Match Result with Ok/Err cases
+- `optmat` - Match Option with Some/None cases
+- `resunw` - Unwrap Result or panic
+- `resch` - Chain multiple Result operations
+- `result` - Result enum definition
+- `option` - Option enum definition
 - `match` - Match statement
 - `struct` - Struct definition
 - `enum` - Enum definition
+- `use` - Import a module
 - And more!
 
 ### ⌨️ Keyboard Shortcuts
@@ -104,12 +110,12 @@ The extension automatically handles indentation for:
 - Function definitions (`def`)
 - Class definitions (`class`)
 - Control flow (`if`, `elif`, `else`, `for`, `while`)
-- Exception handling (`try`, `except`, `finally`)
+- Error handling with Result types (`Result.Ok`, `Result.Err`)
 - Match statements (`match`, `case`)
 
 Dedenting works automatically for:
 - `elif`, `else`
-- `except`, `finally`
+- `case` (in match expressions)
 
 ## Code Folding
 
@@ -137,7 +143,10 @@ def helper2():
    ```bash
    cd vscode-extension
    npm install
-   npm run compile
+   npm install -g vsce
+   npm run package
+   # This creates otterlang-*.vsix file which is the installable extension
+   code --install-extension otterlang-*.vsix
    ```
 
 ## Contributing
@@ -164,19 +173,20 @@ We love contributions! Here's how you can help:
 cd vscode-extension
 npm install
 npm run compile
-code --extensionDevelopmentPath=. --disable-extensions
+
+# Install vsce globally if you haven't already
+npm install -g vsce
+
+# Package the extension (creates installable .vsix file)
+npm run package
+
+# Install the extension locally
+code --install-extension otterlang-*.vsix
+
+# For active development with hot reload
+code --extensionDevelopmentPath=.
 ```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions and development guidelines.
-
-## License
-
-BSD 3-Clause License - see LICENSE file for details
-
-## Credits
-
-Made with 🦦 by the OtterLang team
 
 ---
 
-**Enjoy coding in OtterLang!** 🚀
+**Enjoy coding in OtterLang!** 

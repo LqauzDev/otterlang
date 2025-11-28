@@ -117,6 +117,35 @@ pub unsafe extern "C" fn otter_string_from_literal(ptr: *const c_char) -> *mut c
     }
 }
 
+/// Compare two strings for equality (returns 1 if equal, 0 if not equal)
+///
+/// # Safety
+///
+/// this function dereferences raw pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otter_string_equal(s1: *const c_char, s2: *const c_char) -> i32 {
+    if s1.is_null() || s2.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let str1 = match CStr::from_ptr(s1).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+        let str2 = match CStr::from_ptr(s2).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+
+        if str1 == str2 {
+            1
+        } else {
+            0
+        }
+    }
+}
+
 fn register_string_functions(registry: &SymbolRegistry) {
     registry.register(FfiFunction {
         name: "std.strings.format_float".into(),
@@ -158,6 +187,12 @@ fn register_string_functions(registry: &SymbolRegistry) {
         name: "std.strings.from_literal".into(),
         symbol: "otter_string_from_literal".into(),
         signature: FfiSignature::new(vec![FfiType::Str], FfiType::Str),
+    });
+
+    registry.register(FfiFunction {
+        name: "std.strings.equal".into(),
+        symbol: "otter_string_equal".into(),
+        signature: FfiSignature::new(vec![FfiType::Str, FfiType::Str], FfiType::I32),
     });
 }
 

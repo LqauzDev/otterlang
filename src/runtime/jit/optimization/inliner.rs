@@ -371,48 +371,7 @@ impl Inliner {
                 );
                 out.push(Node::new(Statement::Block(inner), span));
             }
-            Statement::Try {
-                mut body,
-                mut handlers,
-                mut else_block,
-                mut finally_block,
-            } => {
-                self.inline_block(
-                    &mut body,
-                    ctx,
-                    stack,
-                    stats,
-                    depth,
-                    current_hot,
-                    current_name,
-                );
-                for handler in &mut handlers {
-                    self.inline_block(
-                        &mut handler.as_mut().body,
-                        ctx,
-                        stack,
-                        stats,
-                        depth,
-                        current_hot,
-                        current_name,
-                    );
-                }
-                if let Some(ref mut blk) = else_block {
-                    self.inline_block(blk, ctx, stack, stats, depth, current_hot, current_name);
-                }
-                if let Some(ref mut blk) = finally_block {
-                    self.inline_block(blk, ctx, stack, stats, depth, current_hot, current_name);
-                }
-                out.push(Node::new(
-                    Statement::Try {
-                        body,
-                        handlers,
-                        else_block,
-                        finally_block,
-                    },
-                    span,
-                ));
-            }
+            // Exception handling (try/except/finally/raise) removed - use Result<T, E> pattern matching instead
             other => out.push(Node::new(other, span)),
         }
     }
@@ -546,9 +505,7 @@ impl Inliner {
                     }
                 }
             }
-            Expr::Lambda { body, .. } => {
-                self.inline_block(body, ctx, stack, stats, depth, current_hot, current_name);
-            }
+            // Lambda expressions removed - use anonymous fn syntax instead
             Expr::Spawn(expr) | Expr::Await(expr) => {
                 self.inline_expr(expr, ctx, stack, stats, depth, current_hot, current_name);
             }
@@ -722,31 +679,7 @@ impl Inliner {
                         return true;
                     }
                 }
-                Statement::Try {
-                    body,
-                    handlers,
-                    else_block,
-                    finally_block,
-                } => {
-                    if Self::has_internal_return(body) {
-                        return true;
-                    }
-                    for handler in handlers {
-                        if Self::has_internal_return(&handler.as_ref().body) {
-                            return true;
-                        }
-                    }
-                    if let Some(block) = else_block
-                        && Self::has_internal_return(block)
-                    {
-                        return true;
-                    }
-                    if let Some(block) = finally_block
-                        && Self::has_internal_return(block)
-                    {
-                        return true;
-                    }
-                }
+                // Exception handling (try/except/finally/raise) removed
                 _ => {}
             }
         }
@@ -909,29 +842,7 @@ impl InlineBuilder {
                 body: self.rewrite_nested_block(&body),
             },
             Statement::Block(block) => Statement::Block(self.rewrite_nested_block(&block)),
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-            } => Statement::Try {
-                body: self.rewrite_nested_block(&body),
-                handlers: handlers
-                    .into_iter()
-                    .map(|handler| {
-                        handler.map(|mut handler| {
-                            handler.body = self.rewrite_nested_block(&handler.body);
-                            handler
-                        })
-                    })
-                    .collect(),
-                else_block: else_block
-                    .as_ref()
-                    .map(|block| self.rewrite_nested_block(block)),
-                finally_block: finally_block
-                    .as_ref()
-                    .map(|block| self.rewrite_nested_block(block)),
-            },
+            // Exception handling (try/except/finally/raise) removed
             other => other.clone(),
         })
     }
@@ -1035,15 +946,7 @@ impl InlineBuilder {
                     })
                     .collect(),
             },
-            Expr::Lambda {
-                params,
-                ret_ty,
-                body,
-            } => Expr::Lambda {
-                params: params.clone(),
-                ret_ty: ret_ty.clone(),
-                body: self.rewrite_nested_block(&body),
-            },
+            // Lambda expressions removed - use anonymous fn syntax instead
             Expr::Spawn(expr) => Expr::Spawn(Box::new(self.rewrite_expr(&expr))),
             Expr::Await(expr) => Expr::Await(Box::new(self.rewrite_expr(&expr))),
             Expr::Struct { name, fields } => Expr::Struct {

@@ -240,6 +240,90 @@ async function formatDocument(): Promise<void> {
     await vscode.commands.executeCommand('editor.action.formatDocument');
 }
 
+// Standard library completion items
+const stdlibCompletions: vscode.CompletionItem[] = [
+    // Built-in functions
+    { label: 'print', kind: vscode.CompletionItemKind.Function, detail: 'print(msg: str)', documentation: 'Print a message to standard output' },
+    { label: 'println', kind: vscode.CompletionItemKind.Function, detail: 'println(msg: str)', documentation: 'Print a message followed by a newline' },
+    { label: 'eprintln', kind: vscode.CompletionItemKind.Function, detail: 'eprintln(msg: str)', documentation: 'Print a message to standard error' },
+    { label: 'len', kind: vscode.CompletionItemKind.Function, detail: 'len(x: any) -> int', documentation: 'Get the length of a string, list, or map' },
+    { label: 'str', kind: vscode.CompletionItemKind.Function, detail: 'str(x: any) -> string', documentation: 'Convert a value to its string representation' },
+    { label: 'type_of', kind: vscode.CompletionItemKind.Function, detail: 'type_of(x: any) -> string', documentation: 'Get the type of a value as a string' },
+    
+    // Result and Option
+    { label: 'Result.Ok', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Ok(value: T)', documentation: 'Create a successful Result value' },
+    { label: 'Result.Err', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Err(error: E)', documentation: 'Create an error Result value' },
+    { label: 'Option.Some', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.Some(value: T)', documentation: 'Create a Some Option value' },
+    { label: 'Option.None', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.None', documentation: 'Create a None Option value' },
+    
+    // Math functions
+    { label: 'sqrt', kind: vscode.CompletionItemKind.Function, detail: 'sqrt(x: float) -> float', documentation: 'Calculate the square root' },
+    { label: 'pow', kind: vscode.CompletionItemKind.Function, detail: 'pow(x: float, y: float) -> float', documentation: 'Raise x to the power of y' },
+    { label: 'abs', kind: vscode.CompletionItemKind.Function, detail: 'abs(x: float) -> float', documentation: 'Get the absolute value' },
+    { label: 'min', kind: vscode.CompletionItemKind.Function, detail: 'min(a: float, b: float) -> float', documentation: 'Get the minimum of two values' },
+    { label: 'max', kind: vscode.CompletionItemKind.Function, detail: 'max(a: float, b: float) -> float', documentation: 'Get the maximum of two values' },
+    { label: 'floor', kind: vscode.CompletionItemKind.Function, detail: 'floor(x: float) -> float', documentation: 'Round down to the nearest integer' },
+    { label: 'ceil', kind: vscode.CompletionItemKind.Function, detail: 'ceil(x: float) -> float', documentation: 'Round up to the nearest integer' },
+    { label: 'round', kind: vscode.CompletionItemKind.Function, detail: 'round(x: float) -> float', documentation: 'Round to the nearest integer' },
+    
+    // List operations
+    { label: 'append', kind: vscode.CompletionItemKind.Function, detail: 'append(list: List, val: any) -> bool', documentation: 'Append an element to a list' },
+    { label: 'range', kind: vscode.CompletionItemKind.Function, detail: 'range(start: int, end: int) -> List', documentation: 'Create a range of integers' },
+    { label: 'range_float', kind: vscode.CompletionItemKind.Function, detail: 'range_float(start: float, end: float) -> List', documentation: 'Create a range of floats' },
+    
+    // Keywords
+    { label: 'match', kind: vscode.CompletionItemKind.Keyword, detail: 'match expression', documentation: 'Pattern matching expression' },
+    { label: 'case', kind: vscode.CompletionItemKind.Keyword, detail: 'case pattern', documentation: 'Case pattern in match expression' },
+    { label: 'fn', kind: vscode.CompletionItemKind.Keyword, detail: 'fn function', documentation: 'Function definition' },
+    { label: 'let', kind: vscode.CompletionItemKind.Keyword, detail: 'let binding', documentation: 'Variable binding' },
+    { label: 'struct', kind: vscode.CompletionItemKind.Keyword, detail: 'struct definition', documentation: 'Struct type definition' },
+    { label: 'enum', kind: vscode.CompletionItemKind.Keyword, detail: 'enum definition', documentation: 'Enum type definition' },
+    { label: 'use', kind: vscode.CompletionItemKind.Keyword, detail: 'use module', documentation: 'Import a module' },
+    { label: 'pub', kind: vscode.CompletionItemKind.Keyword, detail: 'pub visibility', documentation: 'Public visibility modifier' },
+    { label: 'async', kind: vscode.CompletionItemKind.Keyword, detail: 'async function', documentation: 'Asynchronous function' },
+    { label: 'await', kind: vscode.CompletionItemKind.Keyword, detail: 'await expression', documentation: 'Await an async operation' },
+    { label: 'spawn', kind: vscode.CompletionItemKind.Keyword, detail: 'spawn expression', documentation: 'Spawn an async task' },
+];
+
+function provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position
+): vscode.CompletionItem[] {
+    const linePrefix = document.lineAt(position).text.substr(0, position.character);
+    
+    // Provide Result/Option completions when typing "Result." or "Option."
+    if (linePrefix.endsWith('Result.')) {
+        return [
+            { label: 'Ok', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Ok(value: T)', documentation: 'Create a successful Result value' },
+            { label: 'Err', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Err(error: E)', documentation: 'Create an error Result value' },
+        ];
+    }
+    
+    if (linePrefix.endsWith('Option.')) {
+        return [
+            { label: 'Some', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.Some(value: T)', documentation: 'Create a Some Option value' },
+            { label: 'None', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.None', documentation: 'Create a None Option value' },
+        ];
+    }
+    
+    // Provide match case completions
+    if (linePrefix.match(/case\s+Result\.$/)) {
+        return [
+            { label: 'Ok', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Ok(value)', documentation: 'Match successful Result' },
+            { label: 'Err', kind: vscode.CompletionItemKind.EnumMember, detail: 'Result.Err(error)', documentation: 'Match error Result' },
+        ];
+    }
+    
+    if (linePrefix.match(/case\s+Option\.$/)) {
+        return [
+            { label: 'Some', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.Some(value)', documentation: 'Match Some Option' },
+            { label: 'None', kind: vscode.CompletionItemKind.EnumMember, detail: 'Option.None', documentation: 'Match None Option' },
+        ];
+    }
+    
+    return stdlibCompletions;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     extensionContext = context;
     outputChannel = vscode.window.createOutputChannel('OtterLang');
@@ -254,6 +338,17 @@ export function activate(context: vscode.ExtensionContext) {
     client = createClient(context);
     client.start();
 
+    // Register completion provider
+    const completionProvider = vscode.languages.registerCompletionItemProvider(
+        'otterlang',
+        {
+            provideCompletionItems
+        },
+        '.', // Trigger on dot
+        'R', // Trigger on R (for Result)
+        'O'  // Trigger on O (for Option)
+    );
+
     context.subscriptions.push(
         vscode.commands.registerCommand('otterlang.showMenu', showStatusBarMenu),
         vscode.commands.registerCommand('otterlang.restartServer', () => restartServer(context)),
@@ -263,6 +358,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('otterlang.showOutput', () => showOutput()),
         vscode.commands.registerCommand('otterlang.runFile', () => runCurrentFile()),
         vscode.commands.registerCommand('otterlang.formatDocument', () => formatDocument()),
+        completionProvider,
         statusBarItem,
         outputChannel,
         traceOutputChannel

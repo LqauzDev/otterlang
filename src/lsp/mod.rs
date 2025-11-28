@@ -1057,39 +1057,6 @@ fn build_symbol_table_from_statements(
             Statement::While { body, .. } => {
                 build_symbol_table_from_statements(&body.as_ref().statements, table, tokens, text);
             }
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-                ..
-            } => {
-                build_symbol_table_from_statements(&body.as_ref().statements, table, tokens, text);
-                for handler in handlers {
-                    build_symbol_table_from_statements(
-                        &handler.as_ref().body.as_ref().statements,
-                        table,
-                        tokens,
-                        text,
-                    );
-                }
-                if let Some(block) = else_block {
-                    build_symbol_table_from_statements(
-                        &block.as_ref().statements,
-                        table,
-                        tokens,
-                        text,
-                    );
-                }
-                if let Some(block) = finally_block {
-                    build_symbol_table_from_statements(
-                        &block.as_ref().statements,
-                        table,
-                        tokens,
-                        text,
-                    );
-                }
-            }
             Statement::Block(block) => {
                 build_symbol_table_from_statements(&block.as_ref().statements, table, tokens, text);
             }

@@ -15,9 +15,12 @@ pub use cargo_bridge::{BridgeArtifacts, CargoBridge};
 pub use dynamic_loader::{DynamicLibrary, DynamicLibraryLoader};
 pub use metadata::load_bridge_functions;
 pub use rust_stubgen::RustStubGenerator;
-pub use rustdoc_extractor::{extract_crate_spec, extract_crate_spec_from_json};
+pub use rustdoc_extractor::{
+    extract_crate_spec, extract_crate_spec_from_json, generate_rustdoc_json,
+};
 pub use symbol_registry::{BridgeFunction, BridgeSymbolRegistry};
 pub use types::{
-    BridgeMetadata, CallTemplate, CrateSpec, DependencyConfig, FnSig, FunctionSpec, PublicItem,
-    RustPath, RustTypeRef, StubSource, TypeSpec,
+    BridgeMetadata, CallTemplate, CrateSpec, DependencyConfig, EnumVariant, EnumVariantKind, FnSig,
+    FunctionSpec, PublicItem, RustPath, RustTypeRef, StructField, StubSource, TraitMethod,
+    TypeSpec,
 };

@@ -84,8 +84,14 @@ pub struct OtterCli {
     command: Command,
 }
 
+impl OtterCli {
+    pub fn command(&self) -> &Command {
+        &self.command
+    }
+}
+
 #[derive(Subcommand, Debug)]
-enum Command {
+pub enum Command {
     /// Lexes, parses, and executes the specified source file via the cached native pipeline.
     Run { path: PathBuf },
     /// Builds a native executable from the specified source file.

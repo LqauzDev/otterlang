@@ -1,39 +1,77 @@
-# Transparent Rust Crate Bridge
+# FFI Guide - Rust Crate Integration
 
-OtterLang's transparent FFI system automatically exposes the entire public API of any Rust crate, allowing you to use Rust libraries directly from OtterLang code without manual configuration.
+## Table of Contents
+
+- [Overview](#overview)
+- [Basic Usage](#basic-usage)
+  - [Importing Rust Crates](#importing-rust-crates)
+  - [Configuration (Optional)](#configuration-optional)
+  - [Module Access](#module-access)
+  - [Aliases](#aliases)
+- [Type Mapping](#type-mapping)
+  - [Primitive Types](#primitive-types)
+  - [Complex Types](#complex-types)
+- [Async Support](#async-support)
+  - [Spawn Pattern](#spawn-pattern)
+  - [Direct Await](#direct-await)
+- [Error Handling](#error-handling)
+  - [Result Types](#result-types)
+  - [Option Types](#option-types)
+- [Memory Management](#memory-management)
+  - [Automatic Cleanup](#automatic-cleanup)
+  - [Manual Release (Advanced)](#manual-release-advanced)
+- [Configuration](#configuration)
+  - [Bridge Metadata](#bridge-metadata)
+  - [Cache Management](#cache-management)
+- [Database Integration](#database-integration)
+  - [SQLite](#sqlite)
+  - [PostgreSQL](#postgresql)
+- [Examples](#examples)
+- [Diagnostics](#diagnostics)
+- [Limitations](#limitations)
+- [Performance Considerations](#performance-considerations)
+- [Security](#security)
+- [Future Enhancements](#future-enhancements)
+- [Troubleshooting](#troubleshooting)
+
+OtterLang's transparent Foreign Function Interface (FFI) system allows you to use Rust libraries directly from OtterLang code without writing manual bindings or configuration files.
 
 ## Overview
 
-The transparent bridge system:
+The transparent bridge system provides seamless Rust crate integration:
 
-1. **Automatically extracts** the public API from Rust crates using `rustdoc` JSON
-2. **Generates bridge shims** that convert between OtterLang and Rust types
-3. **Handles memory management** automatically (no manual `free()` calls needed)
-4. **Supports async/await** natively for Rust `Future` types
-5. **Caches bridges** by crate+version+features hash for fast rebuilds
+- **Automatic API extraction** from Rust crates using `rustdoc` JSON
+- **Type-safe bindings** generated automatically for all public APIs
+- **Memory management** handled transparently (no manual memory management)
+- **Native async support** for Rust `Future` types
+- **Intelligent caching** by crate+version+features for fast rebuilds
+- **Zero configuration** for most use cases
 
 ## Basic Usage
 
-### Importing a Rust Crate
+### Importing Rust Crates
+
+Use any Rust crate with a simple import statement:
 
 ```otter
 use rust:rand
 
 fn main:
     let value = rand.random_f64()
-    print("Random value: {}", value)
+    println("Random value: {}", value)
 ```
 
 The `use rust:crate` syntax automatically:
-- Builds a bridge crate if needed
-- Exposes all public functions, types, and constants
-- Registers them in the symbol registry for type checking
+- Downloads and builds the Rust crate
+- Generates type-safe bindings for all public APIs
+- Registers symbols for compile-time type checking
+- Handles memory management transparently
 
-### Bridge Configuration (Optional)
+### Configuration (Optional)
 
-**No configuration needed!** The transparent bridge automatically extracts all public APIs from Rust crates using `rustdoc` JSON. You can use any Rust crate without creating a `bridge.yaml` file.
+**Most crates work without configuration!** The transparent bridge automatically extracts APIs from `rustdoc` JSON.
 
-If you need to customize behavior (e.g., specific crate version, features, or override function signatures), you can create a `ffi/<crate>/bridge.yaml` file:
+For advanced use cases, create `ffi/<crate>/bridge.yaml`:
 
 ```yaml
 dependency:
@@ -41,7 +79,7 @@ dependency:
   version: "0.8"
   features: ["std"]
 
-# Functions are auto-extracted, but you can override specific ones:
+# Override specific function signatures if needed
 functions:
   - name: "rand:custom_function"
     rust_path: "rand::custom_path"
@@ -49,55 +87,56 @@ functions:
     result: "F64"
 ```
 
-**Note:** When `bridge.yaml` exists, its functions override transparently-extracted ones with the same name. If no `bridge.yaml` exists, all functions are automatically extracted from rustdoc.
+**Note:** Manual configuration overrides automatic extraction for specified functions.
 
-### Module Path Resolution
+### Module Access
 
-Functions are accessed using dot notation matching Rust's module structure:
+Access functions using dot notation that mirrors Rust's module structure:
 
 ```otter
 use rust:chrono
 
 fn main:
-    // chrono::Utc::now() becomes:
+    # chrono::Utc::now() becomes:
     let now = chrono.Utc.now()
-    print("Current time: {}", now)
+    println("Current time: {}", now)
 ```
 
-### With Aliases
+### Aliases
 
-You can alias imported crates:
+Import crates with custom names:
 
 ```otter
 use rust:serde_json as json
 
 fn main:
     let data = json.from_str("{\"key\": \"value\"}")
-    print("Parsed: {}", data)
+    println("Parsed: {}", data)
 ```
 
 ## Type Mapping
 
 ### Primitive Types
 
-| Rust Type | OtterLang Type | Notes |
-|-----------|----------------|-------|
-| `()` | `unit` | No value |
-| `bool` | `bool` | Boolean |
-| `i32` | `i32` | 32-bit integer |
-| `i64` | `i64` | 64-bit integer |
-| `f64` | `f64` | 64-bit float |
-| `&str` / `String` | `str` | String (copied) |
+| Rust Type | OtterLang Type | Description |
+|-----------|----------------|-------------|
+| `()` | `unit` | Unit type (no value) |
+| `bool` | `bool` | Boolean values |
+| `i32` | `i32` | 32-bit signed integer |
+| `i64` | `i64` | 64-bit signed integer |
+| `f64` | `f64` | 64-bit floating point |
+| `&str` / `String` | `str` | UTF-8 strings (copied) |
 
 ### Complex Types
 
-| Rust Type | OtterLang Representation | Notes |
-|-----------|--------------------------|-------|
-| `Option<T>` | `str` (JSON) or `nil` | Use `_optjson` helper for JSON |
-| `Result<T, E>` | `str` (JSON) or exception | Use `_try` helper for JSON |
-| `Vec<T>` | `Opaque` (handle) | Refcounted, auto-dropped |
-| `&[T]` | `Opaque` (handle) | Copy-in/copy-out |
-| Custom types | `Opaque` (handle) | Refcounted, auto-dropped |
+| Rust Type | OtterLang Representation | Description |
+|-----------|--------------------------|-------------|
+| `Option<T>` | `nil` or value | Automatic unwrapping, panics on `None` |
+| `Result<T, E>` | value or exception | Automatic unwrapping, exceptions on `Err` |
+| `Vec<T>` | `Opaque` handle | Reference-counted, automatically freed |
+| `&[T]` | `Opaque` handle | Copy-in/copy-out semantics |
+| Structs | `Opaque` handle | Field access not supported yet |
+| Enums | `Opaque` handle | Pattern matching not supported yet |
 
 ## Async Support
 
@@ -304,7 +343,7 @@ use rust:rand
 
 fn main:
     // Error: function expects 2 arguments, got 1
-    let x = rand.uniform(1.0)  // ❌ Type error
+    let x = rand.uniform(1.0)  // Type error
 ```
 
 ### Common Errors
@@ -355,6 +394,107 @@ This shows:
 - **Tuples**: Converted to opaque handles
 - **Enums**: Converted to opaque handles
 - **Structs**: Converted to opaque handles (no field access yet)
+
+## Database Integration
+
+OtterLang provides seamless database access through the same FFI system used for general Rust crate integration.
+
+### SQLite
+
+**Driver**: `rusqlite` crate
+**Best for**: Embedded applications, testing, file-based storage
+
+**Usage Example:**
+
+```otter
+use rust:rusqlite
+use json
+
+fn main:
+    # Open database connection
+    result = rusqlite.open("test.db")
+    data = json.parse(result)
+
+    if data["ok"]:
+        handle = data["handle"]
+
+        # Create table
+        rusqlite.execute(handle, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+
+        # Insert data
+        rusqlite.execute(handle, "INSERT INTO users (name) VALUES ('Alice')")
+        rusqlite.execute(handle, "INSERT INTO users (name) VALUES ('Bob')")
+
+        # Query data
+        query_result = rusqlite.query(handle, "SELECT * FROM users")
+        rows = json.parse(query_result)
+        if rows["ok"]:
+            for row in rows["rows"]:
+                println(f"User ID: {row[\"id\"]}, Name: {row[\"name\"]}")
+
+        # Close connection
+        rusqlite.close(handle)
+    else:
+        println(f"Error: {data[\"error\"]}")
+```
+
+**API Functions:**
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `open` | `(path: string) -> string` | Open SQLite database file |
+| `execute` | `(handle: string, sql: string) -> string` | Execute DDL/DML statements |
+| `query` | `(handle: string, sql: string) -> string` | Execute SELECT queries |
+| `close` | `(handle: string) -> unit` | Close database connection |
+
+### PostgreSQL
+
+**Driver**: `postgres` crate
+**Best for**: Production applications, complex queries, connection pooling
+
+**Usage Example:**
+
+```otter
+use rust:postgres
+use json
+
+fn main:
+    # Connect to database
+    conn_str = "postgresql://user:password@localhost/mydb"
+    result = postgres.connect(conn_str)
+    data = json.parse(result)
+
+    if data["ok"]:
+        handle = data["handle"]
+
+        # Execute parameterized query
+        query_result = postgres.query(handle, "SELECT * FROM users WHERE age > $1")
+        rows = json.parse(query_result)
+        if rows["ok"]:
+            for row in rows["rows"]:
+                println(f"User: {row[\"name\"]}")
+
+        # Close connection
+        postgres.close(handle)
+    else:
+        println(f"Error: {data[\"error\"]}")
+```
+
+**API Functions:**
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `connect` | `(conn_string: string) -> string` | Establish database connection |
+| `execute` | `(handle: string, sql: string) -> string` | Execute DDL/DML statements |
+| `query` | `(handle: string, sql: string) -> string` | Execute SELECT queries |
+| `close` | `(handle: string) -> unit` | Close database connection |
+
+**Connection String Format:**
+```
+postgresql://username:password@host:port/database?sslmode=require
+```
+
+**Note:** Prepared statements and parameter binding are supported through the underlying Rust driver.
 
 ## Future Enhancements
 

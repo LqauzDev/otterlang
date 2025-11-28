@@ -1,8 +1,25 @@
 # OtterLang API Reference
 
-Complete API reference for OtterLang standard library.
+Complete API reference for OtterLang standard library functions and types.
+
+## Table of Contents
+
+- [Built-in Functions](#built-in-functions)
+- [Module: `io` - Input/Output Operations](#module-io---inputoutput-operations)
+- [Module: `math` - Mathematical Functions](#module-math---mathematical-functions)
+- [Module: `time` - Time and Date Operations](#module-time---time-and-date-operations)
+- [Module: `json` - JSON Processing](#module-json)
+- [Module: `runtime` - Runtime Utilities](#module-runtime---runtime-utilities)
+  - [Garbage Collection](#garbage-collection)
+  - [Memory Management](#memory-management)
+  - [Memory Profiling](#memory-profiling)
+- [Module: `arena` - Memory Arenas](#module-arena---memory-arenas)
+- [Module: `task` - Concurrent Task Execution](#module-task---concurrent-task-execution)
+- [Type Definitions](#type-definitions)
 
 ## Built-in Functions
+
+Core functions available in all OtterLang programs.
 
 ### `print(message: string) -> unit`
 
@@ -48,14 +65,16 @@ eprintln("Something went wrong")
 
 ### `str(value: any) -> string`
 
-Converts any value to its string representation. Prefer this over manual concatenation or the deprecated `stringify()` helper.
+Converts any value to its string representation.
 
 **Parameters:**
 - `value`: The value to convert
 
+**Returns:** String representation of the value
+
 **Example:**
 ```otter
-let answer = str(42)
+answer = str(42)
 println(f"Value: {answer}")
 ```
 
@@ -70,8 +89,8 @@ Returns the length of an array or string.
 
 **Example:**
 ```otter
-length = len([1, 2, 3])  # Returns 3
-str_len = len("hello")   # Returns 5
+array_len = len([1, 2, 3])  # Returns 3
+str_len = len("hello")      # Returns 5
 ```
 
 ### `cap(array: array) -> int`
@@ -83,7 +102,7 @@ Returns the capacity of an array.
 
 **Returns:** The capacity as an integer
 
-## Module: `io`
+## Module: `io` - Input/Output Operations
 
 ### `read_line() -> string | nil`
 
@@ -98,7 +117,7 @@ if line != nil:
     println(f"You entered: {line}")
 ```
 
-## Module: `math`
+## Module: `math` - Mathematical Functions
 
 ### `sqrt(x: float) -> float`
 
@@ -113,37 +132,75 @@ Returns the square root of x.
 
 Returns the sine of x (in radians).
 
+**Parameters:**
+- `x`: Angle in radians
+
+**Returns:** The sine value
+
 ### `cos(x: float) -> float`
 
 Returns the cosine of x (in radians).
+
+**Parameters:**
+- `x`: Angle in radians
+
+**Returns:** The cosine value
 
 ### `tan(x: float) -> float`
 
 Returns the tangent of x (in radians).
 
+**Parameters:**
+- `x`: Angle in radians
+
+**Returns:** The tangent value
+
 ### `pow(base: float, exponent: float) -> float`
 
 Returns base raised to the power of exponent.
+
+**Parameters:**
+- `base`: The base value
+- `exponent`: The exponent value
+
+**Returns:** base^exponent
 
 ### `abs(x: float) -> float`
 
 Returns the absolute value of x.
 
+**Parameters:**
+- `x`: A numeric value
+
+**Returns:** The absolute value
+
 ### `max(a: float, b: float) -> float`
 
 Returns the maximum of two values.
+
+**Parameters:**
+- `a`: First value
+- `b`: Second value
+
+**Returns:** The larger of a and b
 
 ### `min(a: float, b: float) -> float`
 
 Returns the minimum of two values.
 
-## Module: `time`
+**Parameters:**
+- `a`: First value
+- `b`: Second value
+
+**Returns:** The smaller of a and b
+
+## Module: `time` - Time and Date Operations
 
 ### `now_ms() -> int`
 
 Returns the current time in milliseconds since Unix epoch.
 
-**Returns:** Milliseconds since epoch
+**Returns:** Milliseconds since epoch as an integer
 
 **Example:**
 ```otter
@@ -196,41 +253,23 @@ json_str = json.stringify({"key": "value"})
 
 > **Note:** `stringify()` is specific to JSON serialization. For general-purpose conversions use the built-in `str()` helper described above (the old Pythonic alias relationship has been flipped: `stringify()` now simply calls `str()`).
 
-## Module: `runtime`
+## Module: `runtime` - Runtime Utilities
 
-### `collect_garbage() -> int`
+### Garbage Collection
+
+#### `collect_garbage() -> int`
 
 Manually triggers garbage collection.
 
-**Returns:** Bytes freed
+**Returns:** Number of bytes freed
 
 **Example:**
 ```otter
-freed = runtime.collect_garbage()
-println(f"Freed {freed} bytes")
+freed_bytes = runtime.collect_garbage()
+println(f"Freed {freed_bytes} bytes")
 ```
 
-### `memory_profiler_start() -> unit`
-
-Starts memory profiling.
-
-### `memory_profiler_stop() -> unit`
-
-Stops memory profiling.
-
-### `memory_profiler_stats() -> string`
-
-Returns memory profiling statistics as JSON.
-
-**Returns:** JSON string with profiling statistics
-
-### `memory_profiler_leaks() -> string`
-
-Detects and returns memory leaks as JSON.
-
-**Returns:** JSON string with leak information
-
-### `set_gc_strategy(strategy: string) -> unit`
+#### `set_gc_strategy(strategy: string) -> unit`
 
 Sets the garbage collection strategy.
 
@@ -239,46 +278,191 @@ Sets the garbage collection strategy.
 
 **Example:**
 ```otter
-set_gc_strategy("marksweep")
+runtime.set_gc_strategy("marksweep")
 ```
 
-### `gc.alloc(size: int) -> i64`
+### Memory Management
 
-Allocates `size` bytes on the GC-managed heap and returns a pointer (as an integer).
+#### `gc.alloc(size: int) -> i64`
+
+Allocates `size` bytes on the GC-managed heap and returns a pointer.
 
 **Parameters:**
-- `size`: Number of bytes to allocate.
+- `size`: Number of bytes to allocate
+
+**Returns:** Pointer as an integer
 
 **Example:**
 ```otter
-let ptr = gc.alloc(128)
+ptr = gc.alloc(128)
 ```
 
-### `gc.add_root(ptr: i64) -> unit`
+#### `gc.add_root(ptr: i64) -> unit`
 
 Registers the given pointer as a GC root.
 
 **Parameters:**
-- `ptr`: Pointer returned by `gc.alloc`.
+- `ptr`: Pointer returned by `gc.alloc`
 
 **Example:**
 ```otter
 gc.add_root(ptr)
 ```
 
-### `gc.remove_root(ptr: i64) -> unit`
+#### `gc.remove_root(ptr: i64) -> unit`
 
 Removes a previously registered root pointer.
 
 **Parameters:**
-- `ptr`: Pointer previously added with `gc.add_root`.
+- `ptr`: Pointer previously added with `gc.add_root`
 
 **Example:**
 ```otter
 gc.remove_root(ptr)
 ```
 
-## Module: `task`
+### Memory Profiling
+
+#### `memory_profiler_start() -> unit`
+
+Starts memory profiling.
+
+**Example:**
+```otter
+runtime.memory_profiler_start()
+```
+
+#### `memory_profiler_stop() -> unit`
+
+Stops memory profiling.
+
+**Example:**
+```otter
+runtime.memory_profiler_stop()
+```
+
+#### `memory_profiler_stats() -> string`
+
+Returns memory profiling statistics as JSON.
+
+**Returns:** JSON string with profiling statistics
+
+**Example:**
+```otter
+stats = runtime.memory_profiler_stats()
+```
+
+#### `memory_profiler_leaks() -> string`
+
+Detects and returns memory leaks as JSON.
+
+**Returns:** JSON string with leak information
+
+**Example:**
+```otter
+leaks = runtime.memory_profiler_leaks()
+```
+
+#### `gc.disable() -> bool`
+
+Temporarily pauses automatic garbage collection.
+
+**Returns:** Previous GC state
+
+**Example:**
+```otter
+was_enabled = gc.disable()
+# Perform operations that need GC disabled
+if was_enabled:
+    gc.enable()
+```
+
+#### `gc.enable() -> bool`
+
+Re-enables automatic garbage collection.
+
+**Returns:** Previous GC state
+
+**Example:**
+```otter
+gc.enable()
+```
+
+#### `gc.is_enabled() -> bool`
+
+Returns `true` if garbage collection is currently active.
+
+**Returns:** Boolean indicating GC state
+
+**Example:**
+```otter
+if not gc.is_enabled():
+    gc.enable()
+```
+
+## Module: `arena` - Memory Arenas
+
+Lightweight bump-allocated arenas for deterministic lifetimes. Arenas do not participate in GC; all allocations live until you reset or destroy the arena.
+
+#### `arena.create(capacity: int = 65536) -> i64`
+
+Creates a new arena with the requested capacity (default 64KB) and returns a handle.
+
+**Parameters:**
+- `capacity`: Initial capacity in bytes (default: 65536)
+
+**Returns:** Arena handle as integer
+
+**Example:**
+```otter
+arena_handle = arena.create(131072)  # 128KB arena
+```
+
+#### `arena.alloc(handle: i64, size: int, align: int = 8) -> i64`
+
+Allocates raw bytes from the arena. Returns a pointer (as an integer) or `0` if there is not enough space.
+
+**Parameters:**
+- `handle`: Arena handle from `arena.create`
+- `size`: Number of bytes to allocate
+- `align`: Alignment requirement (default: 8)
+
+**Returns:** Pointer as integer, or 0 on failure
+
+**Example:**
+```otter
+ptr = arena.alloc(arena_handle, 128)
+```
+
+#### `arena.reset(handle: i64) -> bool`
+
+Clears all allocations inside the arena so it can be reused.
+
+**Parameters:**
+- `handle`: Arena handle
+
+**Returns:** `true` on success
+
+**Example:**
+```otter
+arena.reset(arena_handle)
+```
+
+#### `arena.destroy(handle: i64) -> bool`
+
+Destroys the arena and frees its backing memory.
+
+**Parameters:**
+- `handle`: Arena handle
+
+**Returns:** `true` on success
+
+**Example:**
+```otter
+arena.destroy(arena_handle)
+```
+
+## Module: `task` - Concurrent Task Execution
 
 ### `spawn(block: () -> T) -> Task<T>`
 

@@ -700,15 +700,30 @@ fn map_rust_type_to_spec(ty: &RustTypeRef) -> Option<TypeSpec> {
         RustTypeRef::I32 => Some(TypeSpec::I32),
         RustTypeRef::I64 => Some(TypeSpec::I64),
         RustTypeRef::F64 => Some(TypeSpec::F64),
-        RustTypeRef::Str => Some(TypeSpec::Str),
+        RustTypeRef::Str | RustTypeRef::String => Some(TypeSpec::Str),
+        // Map other integer types to closest TypeSpec equivalent
+        RustTypeRef::I8 | RustTypeRef::I16 => Some(TypeSpec::I32),
+        RustTypeRef::U8 | RustTypeRef::U16 | RustTypeRef::U32 => Some(TypeSpec::I32),
+        RustTypeRef::U64 | RustTypeRef::I128 | RustTypeRef::U128 => Some(TypeSpec::I64),
+        RustTypeRef::Usize | RustTypeRef::Isize => Some(TypeSpec::I64),
+        RustTypeRef::F32 => Some(TypeSpec::F64),
+        RustTypeRef::Char => Some(TypeSpec::I32),
         RustTypeRef::Option { inner } => map_rust_type_to_spec(inner).or(Some(TypeSpec::Opaque)),
         RustTypeRef::Result { ok, .. } => map_rust_type_to_spec(ok).or(Some(TypeSpec::Opaque)),
         RustTypeRef::Ref { inner, .. } => map_rust_type_to_spec(inner),
+        RustTypeRef::Box { inner } | RustTypeRef::Rc { inner } | RustTypeRef::Arc { inner } => {
+            map_rust_type_to_spec(inner).or(Some(TypeSpec::Opaque))
+        }
         RustTypeRef::Vec { .. }
         | RustTypeRef::Slice { .. }
         | RustTypeRef::Array { .. }
         | RustTypeRef::Tuple { .. }
         | RustTypeRef::Future { .. }
+        | RustTypeRef::HashMap { .. }
+        | RustTypeRef::HashSet { .. }
+        | RustTypeRef::Cow { .. }
+        | RustTypeRef::Fn { .. }
+        | RustTypeRef::Generic { .. }
         | RustTypeRef::Path { .. }
         | RustTypeRef::Opaque => Some(TypeSpec::Opaque),
     }

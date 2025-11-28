@@ -236,49 +236,6 @@ impl Formatter {
                 format!("{}{}\n", self.indent(indent), re_export)
             }
             Statement::Block(block) => self.format_block(block, indent),
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-            } => {
-                let mut output = format!("{}try:\n", self.indent(indent));
-                output.push_str(&self.format_block(body, indent + 1));
-
-                for handler in handlers {
-                    output.push_str(&format!("{}except", self.indent(indent)));
-
-                    if let Some(ty) = &handler.as_ref().exception {
-                        output.push_str(&format!(" {}", self.format_type(ty)));
-                    }
-
-                    if let Some(alias) = &handler.as_ref().alias {
-                        output.push_str(&format!(" as {}", alias));
-                    }
-
-                    output.push_str(":\n");
-                    output.push_str(&self.format_block(&handler.as_ref().body, indent + 1));
-                }
-
-                if let Some(else_block) = else_block {
-                    output.push_str(&format!("{}else:\n", self.indent(indent)));
-                    output.push_str(&self.format_block(else_block, indent + 1));
-                }
-
-                if let Some(finally_block) = finally_block {
-                    output.push_str(&format!("{}finally:\n", self.indent(indent)));
-                    output.push_str(&self.format_block(finally_block, indent + 1));
-                }
-
-                output
-            }
-            Statement::Raise(expr) => {
-                let expr_str = match expr {
-                    Some(e) => format!(" {}", self.format_expr(e, indent)),
-                    None => String::new(),
-                };
-                format!("{}raise{}\n", self.indent(indent), expr_str)
-            }
         }
     }
 
@@ -493,44 +450,7 @@ impl Formatter {
                     .join(", ");
                 format!("{}({})", name, fields_str)
             }
-            Expr::Lambda {
-                params,
-                ret_ty,
-                body,
-            } => {
-                let params_str = params
-                    .iter()
-                    .map(|p| {
-                        let base = if let Some(ref ty) = p.as_ref().ty {
-                            format!("{}: {}", p.as_ref().name, self.format_type(ty))
-                        } else {
-                            p.as_ref().name.as_ref().clone()
-                        };
-                        if let Some(default) = &p.as_ref().default {
-                            format!("{} = {}", base, self.format_expr(default, indent))
-                        } else {
-                            base
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let params_display = if params.is_empty() {
-                    String::from("()")
-                } else {
-                    format!("({})", params_str)
-                };
-                let ret_str = if let Some(ret_ty_val) = ret_ty {
-                    format!(" -> {}", self.format_type(ret_ty_val))
-                } else {
-                    String::new()
-                };
-                format!(
-                    "lambda {}{}:\n{}",
-                    params_display,
-                    ret_str,
-                    self.format_block(body, indent + 1)
-                )
-            }
+            // Lambda expressions removed - use anonymous fn syntax instead
             Expr::Await(expr) => format!("await {}", self.format_expr(expr, indent)),
             Expr::Spawn(expr) => format!("spawn {}", self.format_expr(expr, indent)),
             Expr::FString { parts } => {

@@ -1,0 +1,76 @@
+enum Result<T, E>:
+    Ok: (T)
+    Err: (E)
+
+fn validate_age(age_str: str) -> Result<float, string>:
+    if len(age_str) == 0:
+        return Result.Err("Age is required")
+    if age_str == "abc":
+        return Result.Err("Age must be a number")
+    let age = 25.0
+    if age < 18.0:
+        return Result.Err("Must be 18 or older")
+    return Result.Ok(age)
+
+fn validate_user(name: str, email: str, age_str: str) -> Result<str, string>:
+    if len(name) < 2:
+        return Result.Err("Name must be at least 2 characters")
+    # if not email.contains("@"):
+    #     return Result.Err("Invalid email format")
+    match validate_age(age_str):
+        case Result.Ok(age):
+            return Result.Ok(f"{name} validated")
+        case Result.Err(error):
+            return Result.Err(error)
+
+fn process_users() -> list<str>:
+    let valid_users = []
+    match validate_user("Alice", "alice@example.com", "25"):
+        case Result.Ok(result):
+            valid_users.append("Alice")
+            print("✓ User Alice validated successfully")
+        case Result.Err(error):
+            print("✗ Validation failed: error occurred")
+    print("Processed user: Alice")
+    
+    match validate_user("Bob", "invalid-email", "17"):
+        case Result.Ok(result):
+            valid_users.append("Bob")
+            print("✓ User Bob validated successfully")
+        case Result.Err(error):
+            print("✗ Validation failed: error occurred")
+    print("Processed user: Bob")
+    return valid_users
+
+fn safe_api_call(endpoint: str, should_fail: bool) -> Result<str, string>:
+    print(f"Calling API: {endpoint}")
+    if should_fail:
+        return Result.Err("API call failed")
+    return Result.Ok(f"Response from {endpoint}")
+
+fn api_processing_demo():
+    print("API Processing with Error Handling")
+    print("=================================")
+    match safe_api_call("/users", false):
+        case Result.Ok(response):
+            print(f"✓ API call successful: {response}")
+            print("✓ No errors in API call")
+        case Result.Err(error):
+            print("✗ API call failed: error occurred")
+    print("✓ Completed API call")
+    
+    match safe_api_call("/invalid", true):
+        case Result.Ok(response):
+            print(f"✓ API call successful: {response}")
+            print("✓ No errors in API call")
+        case Result.Err(error):
+            print("✗ API call failed: error occurred")
+    print("✓ Completed API call")
+
+fn main():
+    print("Error Handling - Data Validation & APIs")
+    print("======================================")
+    let valid_users = process_users()
+    print(f"Successfully validated users count: {len(valid_users)}")
+    println("")
+    api_processing_demo()

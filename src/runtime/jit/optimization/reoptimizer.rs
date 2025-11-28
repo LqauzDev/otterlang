@@ -125,8 +125,7 @@ impl Reoptimizer {
             Statement::Let { expr, .. }
             | Statement::Assignment { expr, .. }
             | Statement::Expr(expr)
-            | Statement::Return(Some(expr))
-            | Statement::Raise(Some(expr)) => {
+            | Statement::Return(Some(expr)) => {
                 self.fold_constants_in_expr(expr.as_mut());
             }
             Statement::If {
@@ -153,23 +152,7 @@ impl Reoptimizer {
                 self.fold_constants_in_block(body.as_mut());
             }
             Statement::Block(inner) => self.fold_constants_in_block(inner.as_mut()),
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-            } => {
-                self.fold_constants_in_block(body.as_mut());
-                for handler in handlers {
-                    self.fold_constants_in_block(handler.as_mut().body.as_mut());
-                }
-                if let Some(block) = else_block {
-                    self.fold_constants_in_block(block.as_mut());
-                }
-                if let Some(block) = finally_block {
-                    self.fold_constants_in_block(block.as_mut());
-                }
-            }
+            // Exception handling (try/except/finally/raise) removed
             _ => {}
         }
     }
@@ -288,10 +271,7 @@ impl Reoptimizer {
                 }
                 None
             }
-            Expr::Lambda { body, .. } => {
-                self.fold_constants_in_block(body.as_mut());
-                None
-            }
+            // Lambda expressions removed - use anonymous fn syntax instead
             Expr::Spawn(expr) | Expr::Await(expr) => {
                 self.fold_constants_in_expr(expr.as_mut().as_mut());
                 None
@@ -481,23 +461,7 @@ impl Reoptimizer {
                 Statement::While { body, .. }
                 | Statement::For { body, .. }
                 | Statement::Block(body) => self.remove_dead_statements(body.as_mut()),
-                Statement::Try {
-                    body,
-                    handlers,
-                    else_block,
-                    finally_block,
-                } => {
-                    self.remove_dead_statements(body.as_mut());
-                    for handler in handlers {
-                        self.remove_dead_statements(handler.as_mut().body.as_mut());
-                    }
-                    if let Some(block) = else_block {
-                        self.remove_dead_statements(block.as_mut());
-                    }
-                    if let Some(block) = finally_block {
-                        self.remove_dead_statements(block.as_mut());
-                    }
-                }
+                // Exception handling (try/except/finally/raise) removed
                 _ => {}
             }
         }
@@ -534,24 +498,7 @@ impl Reoptimizer {
                     self.prune_empty_blocks(body.as_mut());
                     flattened.push(stmt);
                 }
-                Statement::Try {
-                    body,
-                    handlers,
-                    else_block,
-                    finally_block,
-                } => {
-                    self.prune_empty_blocks(body.as_mut());
-                    for handler in handlers {
-                        self.prune_empty_blocks(handler.as_mut().body.as_mut());
-                    }
-                    if let Some(block) = else_block {
-                        self.prune_empty_blocks(block.as_mut());
-                    }
-                    if let Some(block) = finally_block {
-                        self.prune_empty_blocks(block.as_mut());
-                    }
-                    flattened.push(stmt);
-                }
+                // Exception handling (try/except/finally/raise) removed
                 _ => flattened.push(stmt),
             }
         }

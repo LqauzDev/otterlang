@@ -1,0 +1,54 @@
+enum Result<T, E>:
+    Ok: (T)
+    Err: (E)
+
+fn simulate_operation(name: str, should_fail: bool) -> Result<str, string>:
+    print(f"Starting operation: {name}")
+    if should_fail:
+        return Result.Err("Operation failed")
+    let result = f"Result of {name}"
+    print(f"Successfully completed: {result}")
+    return Result.Ok(result)
+
+fn demonstrate_cleanup():
+    print("Demonstrating Cleanup Patterns")
+    print("=============================")
+    # Simulate finally with explicit cleanup after match
+    match simulate_operation("task1", false):
+        case Result.Ok(result):
+            print(f"Got result: {result}")
+        case Result.Err(error):
+            print("Operation failed: error occurred")
+    print("Cleaning up after task1")
+    
+    match simulate_operation("task2", true):
+        case Result.Ok(result):
+            print(f"Got result: {result}")
+        case Result.Err(error):
+            print("Operation failed: error occurred")
+    print("Cleaning up after task2")
+
+fn resource_management_demo():
+    print("Resource Management with Cleanup")
+    print("=================================")
+    print("Acquiring resource: Database")
+    print("Acquiring resource: Network")
+    print("Acquiring resource: File")
+    
+    match simulate_operation("processing", true):
+        case Result.Ok(_):
+            print("All operations completed successfully")
+        case Result.Err(error):
+            print("Operation failed: error occurred")
+    
+    # Cleanup always happens
+    print("Releasing resource: Database")
+    print("Releasing resource: Network")
+    print("Releasing resource: File")
+
+fn main():
+    print("Error Handling - Resource Management")
+    print("====================================")
+    demonstrate_cleanup()
+    println("")
+    resource_management_demo()

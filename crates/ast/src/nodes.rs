@@ -290,15 +290,6 @@ pub enum Statement {
 
     // Blocks (for grouping)
     Block(Node<Block>),
-
-    // Exception handling
-    Try {
-        body: Node<Block>,
-        handlers: Vec<Node<ExceptHandler>>,
-        else_block: Option<Node<Block>>,
-        finally_block: Option<Node<Block>>,
-    },
-    Raise(Option<Node<Expr>>),
 }
 
 impl Statement {
@@ -316,8 +307,7 @@ impl Statement {
             | Statement::PubUse { .. }
             | Statement::Struct { .. }
             | Statement::Enum { .. }
-            | Statement::TypeAlias { .. }
-            | Statement::Raise(_) => 1,
+            | Statement::TypeAlias { .. } => 1,
 
             Statement::If {
                 then_block,
@@ -340,24 +330,6 @@ impl Statement {
             }
             Statement::Function(func) => 1 + func.as_ref().body.as_ref().recursive_count(),
             Statement::Block(block) => block.as_ref().recursive_count(),
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-            } => {
-                let mut count = 1 + body.as_ref().recursive_count();
-                for handler in handlers {
-                    count += handler.as_ref().body.as_ref().recursive_count();
-                }
-                if let Some(block) = else_block {
-                    count += block.as_ref().recursive_count();
-                }
-                if let Some(block) = finally_block {
-                    count += block.as_ref().recursive_count();
-                }
-                count
-            }
         }
     }
 
@@ -457,13 +429,6 @@ pub enum Expr {
         parts: Vec<Node<FStringPart>>,
     },
 
-    // Lambda expressions
-    Lambda {
-        params: Vec<Node<Param>>,
-        ret_ty: Option<Node<Type>>,
-        body: Node<Block>,
-    },
-
     // Async operations
     Await(Box<Node<Expr>>),
     Spawn(Box<Node<Expr>>),
@@ -481,24 +446,6 @@ pub struct MatchArm {
     pub pattern: Node<Pattern>,
     pub guard: Option<Node<Expr>>,
     pub body: Node<Block>,
-}
-
-/// Exception handler for try/except blocks
-#[derive(Debug, Clone)]
-pub struct ExceptHandler {
-    pub exception: Option<Node<Type>>,
-    pub alias: Option<String>,
-    pub body: Node<Block>,
-}
-
-impl ExceptHandler {
-    pub fn new(exception: Option<Node<Type>>, alias: Option<String>, body: Node<Block>) -> Self {
-        Self {
-            exception,
-            alias,
-            body,
-        }
-    }
 }
 
 /// Pattern for match expressions

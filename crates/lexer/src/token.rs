@@ -6,7 +6,6 @@ use std::hash::{Hash, Hasher};
 pub enum TokenKind {
     // Keywords
     Fn,
-    Lambda,
     Let,
     Return,
     If,
@@ -21,7 +20,6 @@ pub enum TokenKind {
     Is,
     Not,
     Use,
-    From,
     As,
     Pub,
     Async,
@@ -33,10 +31,6 @@ pub enum TokenKind {
     False,
     Print,
     None,
-    Try,
-    Except,
-    Finally,
-    Raise,
     Struct,
     Enum,
     And,
@@ -101,41 +95,35 @@ impl Hash for TokenKind {
         match self {
             // Keywords - use discriminant for efficiency
             TokenKind::Fn => 0u16.hash(state),
-            TokenKind::Lambda => 1u16.hash(state),
-            TokenKind::Let => 2u16.hash(state),
-            TokenKind::Return => 3u16.hash(state),
-            TokenKind::If => 4u16.hash(state),
-            TokenKind::Else => 5u16.hash(state),
-            TokenKind::Elif => 6u16.hash(state),
-            TokenKind::For => 7u16.hash(state),
-            TokenKind::While => 8u16.hash(state),
-            TokenKind::Break => 9u16.hash(state),
-            TokenKind::Continue => 10u16.hash(state),
-            TokenKind::Pass => 11u16.hash(state),
-            TokenKind::In => 12u16.hash(state),
-            TokenKind::Is => 13u16.hash(state),
-            TokenKind::Not => 14u16.hash(state),
-            TokenKind::Use => 15u16.hash(state),
-            TokenKind::From => 16u16.hash(state),
-            TokenKind::As => 17u16.hash(state),
-            TokenKind::Pub => 18u16.hash(state),
-            TokenKind::Async => 19u16.hash(state),
-            TokenKind::Await => 20u16.hash(state),
-            TokenKind::Spawn => 21u16.hash(state),
-            TokenKind::Match => 22u16.hash(state),
-            TokenKind::Case => 23u16.hash(state),
-            TokenKind::True => 24u16.hash(state),
-            TokenKind::False => 25u16.hash(state),
-            TokenKind::Print => 26u16.hash(state),
-            TokenKind::None => 27u16.hash(state),
-            TokenKind::Try => 28u16.hash(state),
-            TokenKind::Except => 29u16.hash(state),
-            TokenKind::Finally => 30u16.hash(state),
-            TokenKind::Raise => 31u16.hash(state),
-            TokenKind::Struct => 32u16.hash(state),
-            TokenKind::Enum => 33u16.hash(state),
-            TokenKind::And => 34u16.hash(state),
-            TokenKind::Or => 35u16.hash(state),
+            TokenKind::Let => 1u16.hash(state),
+            TokenKind::Return => 2u16.hash(state),
+            TokenKind::If => 3u16.hash(state),
+            TokenKind::Else => 4u16.hash(state),
+            TokenKind::Elif => 5u16.hash(state),
+            TokenKind::For => 6u16.hash(state),
+            TokenKind::While => 7u16.hash(state),
+            TokenKind::Break => 8u16.hash(state),
+            TokenKind::Continue => 9u16.hash(state),
+            TokenKind::Pass => 10u16.hash(state),
+            TokenKind::In => 11u16.hash(state),
+            TokenKind::Is => 12u16.hash(state),
+            TokenKind::Not => 13u16.hash(state),
+            TokenKind::Use => 14u16.hash(state),
+            TokenKind::As => 15u16.hash(state),
+            TokenKind::Pub => 16u16.hash(state),
+            TokenKind::Async => 17u16.hash(state),
+            TokenKind::Await => 18u16.hash(state),
+            TokenKind::Spawn => 19u16.hash(state),
+            TokenKind::Match => 20u16.hash(state),
+            TokenKind::Case => 21u16.hash(state),
+            TokenKind::True => 22u16.hash(state),
+            TokenKind::False => 23u16.hash(state),
+            TokenKind::Print => 24u16.hash(state),
+            TokenKind::None => 25u16.hash(state),
+            TokenKind::Struct => 26u16.hash(state),
+            TokenKind::Enum => 27u16.hash(state),
+            TokenKind::And => 28u16.hash(state),
+            TokenKind::Or => 29u16.hash(state),
 
             // Identifiers
             TokenKind::Identifier(name) => {
@@ -218,7 +206,6 @@ impl TokenKind {
         match self {
             // Keywords
             TokenKind::Fn => "fn",
-            TokenKind::Lambda => "lambda",
             TokenKind::Let => "let",
             TokenKind::Return => "return",
             TokenKind::If => "if",
@@ -233,7 +220,6 @@ impl TokenKind {
             TokenKind::Is => "is",
             TokenKind::Not => "not",
             TokenKind::Use => "use",
-            TokenKind::From => "from",
             TokenKind::As => "as",
             TokenKind::Pub => "pub",
             TokenKind::Async => "async",
@@ -245,10 +231,6 @@ impl TokenKind {
             TokenKind::False => "false",
             TokenKind::Print => "print",
             TokenKind::None => "None",
-            TokenKind::Try => "try",
-            TokenKind::Except => "except",
-            TokenKind::Finally => "finally",
-            TokenKind::Raise => "raise",
             TokenKind::Struct => "struct",
             TokenKind::Enum => "enum",
             TokenKind::And => "and",
@@ -339,7 +321,6 @@ impl Token {
         matches!(
             self.kind,
             TokenKind::Fn
-                | TokenKind::Lambda
                 | TokenKind::Let
                 | TokenKind::Return
                 | TokenKind::If
@@ -354,7 +335,6 @@ impl Token {
                 | TokenKind::Is
                 | TokenKind::Not
                 | TokenKind::Use
-                | TokenKind::From
                 | TokenKind::As
                 | TokenKind::Pub
                 | TokenKind::Async
@@ -366,10 +346,6 @@ impl Token {
                 | TokenKind::False
                 | TokenKind::Print
                 | TokenKind::None
-                | TokenKind::Try
-                | TokenKind::Except
-                | TokenKind::Finally
-                | TokenKind::Raise
                 | TokenKind::Struct
                 | TokenKind::Enum
                 | TokenKind::And

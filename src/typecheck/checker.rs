@@ -1156,74 +1156,6 @@ impl TypeChecker {
                 Ok(TypeInfo::Unit)
             }
             Statement::Block(block) => self.check_block(block),
-            Statement::Try {
-                body,
-                handlers,
-                else_block,
-                finally_block,
-            } => {
-                // Type check the try body
-                self.check_block(body)?;
-
-                // Type check each handler
-                for handler in handlers {
-                    if let Some(exception_type) = &handler.as_ref().exception {
-                        // Convert AST type to TypeInfo
-                        let handler_ty = self.context.type_from_annotation(exception_type);
-                        // Validate that handler type is compatible with Error
-                        if !handler_ty.is_compatible_with(&TypeInfo::Error) {
-                            self.errors.push(
-                                TypeError::new(format!(
-                                    "Exception handler type '{}' is not compatible with Error type",
-                                    handler_ty.display_name()
-                                ))
-                                .with_span(*span),
-                            );
-                        }
-                    }
-
-                    // Create a new scope for the handler body
-                    let original_vars = self.context.variables.clone();
-                    if let Some(alias) = &handler.as_ref().alias {
-                        // Bind the exception variable in the handler scope
-                        self.context.insert_variable(alias.clone(), TypeInfo::Error);
-                    }
-
-                    // Type check the handler body in the scoped context
-                    self.check_block(&handler.as_ref().body)?;
-
-                    // Restore the original variable context (handler variables don't leak)
-                    self.context.variables = original_vars;
-                }
-
-                // Type check else block if present (runs when no exception)
-                if let Some(else_block) = else_block {
-                    self.check_block(else_block)?;
-                }
-
-                // Type check finally block if present (always runs)
-                if let Some(finally_block) = finally_block {
-                    self.check_block(finally_block)?;
-                }
-                Ok(TypeInfo::Unit)
-            }
-            Statement::Raise(expr) => {
-                if let Some(expr) = expr {
-                    // Type check the expression being raised
-                    let expr_ty = self.infer_expr_type(expr)?;
-                    // The raised expression must be Error-compatible or a string (for convenience)
-                    if !expr_ty.is_compatible_with(&TypeInfo::Error) && expr_ty != TypeInfo::Str {
-                        self.errors.push(TypeError::new(format!(
-                            "Cannot raise expression of type '{}', must be Error-compatible or a string",
-                            expr_ty.display_name()
-                        )).with_span(*span));
-                    }
-                } else {
-                    // Bare raise statement - only valid inside exception handlers
-                    // For now, we'll allow it (checked at runtime)
-                }
-                Ok(TypeInfo::Unit)
-            }
         }
     }
 
@@ -1898,52 +1830,7 @@ impl TypeChecker {
                     }
                     Ok(TypeInfo::Str)
                 }
-                Expr::Lambda {
-                    params,
-                    ret_ty,
-                    body,
-                } => {
-                    // Create a new context for the lambda
-                    let mut lambda_context = self.context.clone();
-
-                    // Add lambda parameters to context
-                    let mut param_types = Vec::new();
-                    let mut param_defaults = Vec::new();
-                    for param in params {
-                        let param_type = if let Some(ty) = &param.as_ref().ty {
-                            self.context.type_from_annotation(ty)
-                        } else {
-                            TypeInfo::Unknown
-                        };
-                        param_types.push(param_type.clone());
-                        lambda_context
-                            .insert_variable(param.as_ref().name.as_ref().clone(), param_type);
-                        param_defaults.push(param.as_ref().default.is_some());
-                    }
-
-                    // Type check lambda body
-                    let old_context = std::mem::replace(&mut self.context, lambda_context);
-                    let body_result = self.check_block(body);
-                    self.context = old_context;
-
-                    if body_result.is_err() {
-                        return Ok(TypeInfo::Error);
-                    }
-
-                    let return_type = if let Some(ty) = ret_ty {
-                        self.context.type_from_annotation(ty)
-                    } else {
-                        // Try to infer return type from body
-                        // For now, assume unit if no return statement
-                        TypeInfo::Unit
-                    };
-
-                    Ok(TypeInfo::Function {
-                        params: param_types,
-                        param_defaults,
-                        return_type: Box::new(return_type),
-                    })
-                }
+                // Lambda expressions removed - use anonymous fn syntax instead
                 Expr::Array(elements) => {
                     if elements.is_empty() {
                         // Empty array - can't infer element type

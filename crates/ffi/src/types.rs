@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Template for how a stub should invoke the underlying Rust function.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -204,6 +204,8 @@ pub enum PublicItem {
         sig: FnSig,
         path: RustPath,
         doc: Option<String>,
+        /// Whether this is a &self method
+        is_instance: bool,
     },
     AssocFunction {
         impl_for: RustTypeRef,
@@ -216,6 +218,8 @@ pub enum PublicItem {
         ty: RustTypeRef,
         path: RustPath,
         doc: Option<String>,
+        /// String representation of the constant value, if available
+        value: Option<String>,
     },
     Static {
         name: String,
@@ -228,23 +232,85 @@ pub enum PublicItem {
         name: String,
         path: RustPath,
         doc: Option<String>,
+        /// Fields of the struct (empty for tuple structs or unit structs)
+        fields: Vec<StructField>,
+        /// Whether this is a tuple struct
+        is_tuple: bool,
+        /// Type parameters (e.g., ["T", "U"] for struct Foo<T, U>)
+        generics: Vec<String>,
     },
     Enum {
         name: String,
         path: RustPath,
         doc: Option<String>,
+        /// Variants of the enum
+        variants: Vec<EnumVariant>,
+        /// Type parameters
+        generics: Vec<String>,
     },
     TypeAlias {
         name: String,
         aliased: RustTypeRef,
         path: RustPath,
         doc: Option<String>,
+        /// Type parameters
+        generics: Vec<String>,
     },
     Module {
         name: String,
         path: RustPath,
         doc: Option<String>,
     },
+    Trait {
+        name: String,
+        path: RustPath,
+        doc: Option<String>,
+        /// Methods defined in the trait
+        methods: Vec<TraitMethod>,
+        /// Associated types
+        associated_types: Vec<String>,
+        /// Type parameters
+        generics: Vec<String>,
+        /// Whether this trait is unsafe
+        is_unsafe: bool,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TraitMethod {
+    pub name: String,
+    pub sig: FnSig,
+    pub has_default_impl: bool,
+}
+
+/// Field in a struct
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StructField {
+    pub name: String,
+    pub ty: RustTypeRef,
+    pub doc: Option<String>,
+    /// Whether the field is public
+    pub is_public: bool,
+}
+
+/// Variant in an enum
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EnumVariant {
+    pub name: String,
+    pub doc: Option<String>,
+    /// The kind of variant (unit, tuple, struct)
+    pub kind: EnumVariantKind,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "variant_kind")]
+pub enum EnumVariantKind {
+    /// Unit variant (e.g., `None`)
+    Unit,
+    /// Tuple variant (e.g., `Some(T)`)
+    Tuple { fields: Vec<RustTypeRef> },
+    /// Struct variant (e.g., `Point { x: i32, y: i32 }`)
+    Struct { fields: Vec<StructField> },
 }
 
 /// Function signature (sync or async) with parameter and return types.
@@ -255,6 +321,9 @@ pub struct FnSig {
     pub return_type: Option<RustTypeRef>,
     #[serde(default)]
     pub is_async: bool,
+    /// Type parameters (e.g., ["T", "U"] for fn foo<T, U>())
+    #[serde(default)]
+    pub generics: Vec<String>,
 }
 
 /// Abstract type description sufficient for generating FFI shims and Otter types.
@@ -265,16 +334,35 @@ pub enum RustTypeRef {
     Bool,
     I32,
     I64,
+    I8,
+    I16,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    Usize,
+    Isize,
+    F32,
     F64,
+    Char,
     Str,
+    String,
     /// Fully-qualified nominal type
     Path {
         path: RustPath,
+        /// Generic arguments if any (e.g., for HashMap<K, V>)
+        #[serde(default)]
+        args: Vec<RustTypeRef>,
     },
     /// Reference types
     Ref {
         mutable: bool,
         inner: Box<RustTypeRef>,
+        /// Lifetime if specified
+        #[serde(default)]
+        lifetime: Option<String>,
     },
     /// Owned container types
     Vec {
@@ -302,6 +390,42 @@ pub enum RustTypeRef {
     /// Future<Output = T>
     Future {
         output: Box<RustTypeRef>,
+    },
+    /// HashMap<K, V>
+    HashMap {
+        key: Box<RustTypeRef>,
+        value: Box<RustTypeRef>,
+    },
+    /// HashSet<T>
+    HashSet {
+        elem: Box<RustTypeRef>,
+    },
+    /// Box<T>
+    Box {
+        inner: Box<RustTypeRef>,
+    },
+    /// Rc<T>
+    Rc {
+        inner: Box<RustTypeRef>,
+    },
+    /// Arc<T>
+    Arc {
+        inner: Box<RustTypeRef>,
+    },
+    /// Cow<'a, T>
+    Cow {
+        inner: Box<RustTypeRef>,
+        #[serde(default)]
+        lifetime: Option<String>,
+    },
+    /// Function pointer or closure
+    Fn {
+        params: Vec<RustTypeRef>,
+        return_type: Box<RustTypeRef>,
+    },
+    /// Generic type parameter (e.g., T in fn foo<T>())
+    Generic {
+        name: String,
     },
     /// Opaque for types we cannot (or don't need to) structurally encode
     Opaque,
