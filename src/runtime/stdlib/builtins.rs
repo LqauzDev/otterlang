@@ -1974,6 +1974,8 @@ unsafe extern "C" {
     fn otter_entry();
 }
 
+// This main function is only for FFI-compiled programs, not for the binaries
+#[cfg(feature = "ffi-main")]
 #[unsafe(no_mangle)]
 pub extern "C" fn main(_argc: i32, _argv: *const *const c_char) -> i32 {
     unsafe {

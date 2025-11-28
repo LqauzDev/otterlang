@@ -28,6 +28,7 @@ path = "src/bin/lsp.rs"
 default = []
 task-runtime = []
 toml-config = []
+ffi-main = []
 
 [dependencies]
 ast.path = "crates/ast"

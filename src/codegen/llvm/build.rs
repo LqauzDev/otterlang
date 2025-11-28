@@ -266,7 +266,9 @@ pub fn build_executable(
         // Add macOS version minimum and suppress compatibility warnings
         if runtime_triple.os == "darwin" {
             cc.arg("-mmacosx-version-min=11.0");
-            cc.arg("-w"); // Suppress warnings
+            cc.arg("-w"); // Suppress compiler warnings
+            // Suppress linker warnings about object files built for newer macOS versions
+            cc.arg("-Wl,-w"); // Suppress linker warnings
         }
 
         // Skip C runtime when Rust runtime is available to avoid duplicate symbols
@@ -575,6 +577,8 @@ pub fn build_shared_library(
         // Add macOS version minimum to avoid platform load command warning
         if runtime_triple.os == "darwin" {
             cc.arg("-mmacosx-version-min=11.0");
+            // Suppress linker warnings about object files built for newer macOS versions
+            cc.arg("-Wl,-w"); // Suppress linker warnings
         }
 
         // Skip C runtime when Rust runtime is available to avoid duplicate symbols
