@@ -46,6 +46,14 @@ struct Map {
 static MAPS: Lazy<RwLock<std::collections::HashMap<HandleId, Map>>> =
     Lazy::new(|| RwLock::new(std::collections::HashMap::new()));
 
+struct ArrayIterator {
+    handle: HandleId,
+    index: usize,
+}
+
+static ARRAY_ITERATORS: Lazy<RwLock<std::collections::HashMap<HandleId, ArrayIterator>>> =
+    Lazy::new(|| RwLock::new(std::collections::HashMap::new()));
+
 fn value_to_string(value: &Value) -> String {
     match value {
         Value::Unit => "None".to_string(),
@@ -796,6 +804,67 @@ pub unsafe extern "C" fn otter_builtin_map_set_map(
 // ============================================================================
 // panic(msg) - Terminate execution with error message
 // ============================================================================
+
+// ============================================================================
+// Array Iterator
+// ============================================================================
+
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_builtin_iter_array(handle: u64) -> u64 {
+    let id = next_handle_id();
+    let iter = ArrayIterator { handle, index: 0 };
+    ARRAY_ITERATORS.write().insert(id, iter);
+    id
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_builtin_iter_has_next_array(iter_handle: u64) -> bool {
+    let iterators = ARRAY_ITERATORS.read();
+    if let Some(iter) = iterators.get(&iter_handle) {
+        let lists = LISTS.read();
+        if let Some(list) = lists.get(&iter.handle) {
+            iter.index < list.items.len()
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_builtin_iter_next_array(iter_handle: u64) -> u64 {
+    let mut iterators = ARRAY_ITERATORS.write();
+    if let Some(iter) = iterators.get_mut(&iter_handle) {
+        if let Some(val) = list_value(iter.handle, iter.index as i64) {
+            iter.index += 1;
+            match val {
+                Value::I64(i) => i as u64,
+                Value::F64(f) => f.to_bits(),
+                Value::Bool(b) => {
+                    if b {
+                        1
+                    } else {
+                        0
+                    }
+                }
+                Value::String(s) => CString::new(s).unwrap().into_raw() as u64,
+                Value::List(h) => h,
+                Value::Map(h) => h,
+                Value::Unit => 0,
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_builtin_iter_free_array(iter_handle: u64) {
+    ARRAY_ITERATORS.write().remove(&iter_handle);
+}
 
 /// otter-lang's builtin panic function
 ///
@@ -1874,6 +1943,43 @@ fn register_builtin_symbols(registry: &SymbolRegistry) {
             FfiType::Opaque,
         ),
     });
+
+    // Array Iterator functions
+    registry.register(FfiFunction {
+        name: "__otter_iter_array".into(),
+        symbol: "otter_builtin_iter_array".into(),
+        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Opaque),
+    });
+
+    registry.register(FfiFunction {
+        name: "__otter_iter_has_next_array".into(),
+        symbol: "otter_builtin_iter_has_next_array".into(),
+        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Bool),
+    });
+
+    registry.register(FfiFunction {
+        name: "__otter_iter_next_array".into(),
+        symbol: "otter_builtin_iter_next_array".into(),
+        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Opaque),
+    });
+
+    registry.register(FfiFunction {
+        name: "__otter_iter_free_array".into(),
+        symbol: "otter_builtin_iter_free_array".into(),
+        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Unit),
+    });
+}
+
+unsafe extern "C" {
+    fn otter_entry();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn main(_argc: i32, _argv: *const *const c_char) -> i32 {
+    unsafe {
+        otter_entry();
+    }
+    0
 }
 
 inventory::submit! {

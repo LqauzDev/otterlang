@@ -686,6 +686,12 @@ int64_t otter_builtin_len_string(const char* s) {
     if (!s) return 0;
     return (int64_t)strlen(s);
 }
+
+extern void otter_entry();
+int main(int argc, char** argv) {
+    otter_entry();
+    return 0;
+}
 "#.to_string()
     }
 

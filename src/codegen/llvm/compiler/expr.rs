@@ -322,7 +322,8 @@ impl<'ctx> Compiler<'ctx> {
                     self.builder.position_at_end(field_check_bb);
 
                     // Get enum type to determine field types
-                    let enum_type = self.enum_type(enum_name)
+                    let enum_type = self
+                        .enum_type(enum_name)
                         .ok_or_else(|| anyhow!("Enum type not found for {}", enum_name))?
                         .clone();
                     let TypeInfo::Enum { variants, .. } = enum_type else {
@@ -330,16 +331,24 @@ impl<'ctx> Compiler<'ctx> {
                     };
                     let variant_info = variants
                         .get(variant)
-                        .ok_or_else(|| anyhow!("Variant {} not found in enum {}", variant, enum_name))?
+                        .ok_or_else(|| {
+                            anyhow!("Variant {} not found in enum {}", variant, enum_name)
+                        })?
                         .clone();
 
                     for (field_idx, field_pattern) in fields.iter().enumerate() {
                         let field_type = variant_info
                             .fields
                             .get(field_idx)
-                            .ok_or_else(|| anyhow!("Field index {} out of bounds for variant {}", field_idx, variant))?
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "Field index {} out of bounds for variant {}",
+                                    field_idx,
+                                    variant
+                                )
+                            })?
                             .clone();
-                        
+
                         // Use type-specific getter based on field type
                         let get_field_fn_name = match enum_field_kind(&field_type) {
                             EnumFieldKind::Int => "runtime.enum.get_i64",
@@ -740,6 +749,9 @@ impl<'ctx> Compiler<'ctx> {
                 let int_val = lhs.value.unwrap().into_int_value();
                 self.builder
                     .build_signed_int_to_float(int_val, self.context.f64_type(), "itof")?
+            } else if lhs_ty == OtterType::Opaque {
+                let coerced = self.coerce_type(lhs.value.unwrap(), lhs_ty, OtterType::F64)?;
+                coerced.into_float_value()
             } else {
                 bail!("Cannot coerce {:?} to F64", lhs_ty);
             };
@@ -750,6 +762,9 @@ impl<'ctx> Compiler<'ctx> {
                 let int_val = rhs.value.unwrap().into_int_value();
                 self.builder
                     .build_signed_int_to_float(int_val, self.context.f64_type(), "itof")?
+            } else if rhs_ty == OtterType::Opaque {
+                let coerced = self.coerce_type(rhs.value.unwrap(), rhs_ty, OtterType::F64)?;
+                coerced.into_float_value()
             } else {
                 bail!("Cannot coerce {:?} to F64", rhs_ty);
             };
@@ -1045,6 +1060,33 @@ impl<'ctx> Compiler<'ctx> {
             (OtterType::Opaque, OtterType::I64) | (OtterType::I64, OtterType::Opaque) => {
                 Ok(value) // Already same representation
             }
+            (OtterType::F64, OtterType::Opaque) => {
+                let float_val = value.into_float_value();
+                Ok(self
+                    .builder
+                    .build_bit_cast(float_val, self.context.i64_type(), "f64_to_opaque")?)
+            }
+            (OtterType::Opaque, OtterType::F64) => {
+                let int_val = value.into_int_value();
+                Ok(self
+                    .builder
+                    .build_bit_cast(int_val, self.context.f64_type(), "opaque_to_f64")?)
+            }
+            (OtterType::Bool, OtterType::Opaque) => {
+                let bool_val = value.into_int_value();
+                Ok(self
+                    .builder
+                    .build_int_z_extend(bool_val, self.context.i64_type(), "bool_to_opaque")?
+                    .into())
+            }
+            (OtterType::Opaque, OtterType::Bool) => {
+                let int_val = value.into_int_value();
+                let zero = int_val.get_type().const_zero();
+                Ok(self
+                    .builder
+                    .build_int_compare(inkwell::IntPredicate::NE, int_val, zero, "opaque_to_bool")?
+                    .into())
+            }
 
             // List/Map conversions (treat as opaque pointers)
             (OtterType::List | OtterType::Map, OtterType::Opaque)
@@ -1053,7 +1095,10 @@ impl<'ctx> Compiler<'ctx> {
             }
 
             // Incompatible types
-            _ => bail!("Cannot coerce type {:?} to {:?}", from_ty, to_ty),
+            _ => {
+                eprintln!("DEBUG: FAILED coerce_type {:?} -> {:?}", from_ty, to_ty);
+                bail!("Cannot coerce type {:?} to {:?}", from_ty, to_ty)
+            }
         }
     }
 
@@ -1124,29 +1169,45 @@ impl<'ctx> Compiler<'ctx> {
                                     let arg_val = self.eval_expr(args[0].as_ref(), ctx)?;
                                     let method_name: String = match arg_val.ty {
                                         OtterType::Str => "append<list,string>".to_string(),
-                                        OtterType::I64 | OtterType::I32 => "append<list,int>".to_string(),
+                                        OtterType::I64 | OtterType::I32 => {
+                                            "append<list,int>".to_string()
+                                        }
                                         OtterType::F64 => "append<list,float>".to_string(),
                                         OtterType::Bool => "append<list,bool>".to_string(),
-                                        OtterType::List | OtterType::Opaque => "append<list,list>".to_string(),
-                                        _ => bail!("unsupported append argument type: {:?}", arg_val.ty),
+                                        OtterType::List | OtterType::Opaque => {
+                                            "append<list,list>".to_string()
+                                        }
+                                        _ => bail!(
+                                            "unsupported append argument type: {:?}",
+                                            arg_val.ty
+                                        ),
                                     };
                                     implicit_self = Some(evaluated);
                                     method_name
                                 } else {
-                                    bail!("list method '{}' not supported or missing arguments", field);
+                                    bail!(
+                                        "list method '{}' not supported or missing arguments",
+                                        field
+                                    );
                                 }
                             } else if let OtterType::Struct(struct_id) = evaluated.ty.clone() {
-                                if let Some(method_name) = self.resolve_struct_method_name(struct_id, field) {
+                                if let Some(method_name) =
+                                    self.resolve_struct_method_name(struct_id, field)
+                                {
                                     implicit_self = Some(evaluated);
                                     method_name
                                 } else {
-                                    bail!("struct method '{}.{}' not found", self.struct_info(struct_id).name, field);
+                                    bail!(
+                                        "struct method '{}.{}' not found",
+                                        self.struct_info(struct_id).name,
+                                        field
+                                    );
                                 }
                             } else {
                                 // Not a list or struct, continue with other checks
                                 if let Expr::Identifier(enum_name) = object.as_ref().as_ref() {
-                                    if let Some(enum_value) =
-                                        self.try_build_enum_from_member(enum_name, field, args, ctx)?
+                                    if let Some(enum_value) = self
+                                        .try_build_enum_from_member(enum_name, field, args, ctx)?
                                     {
                                         return Ok(enum_value);
                                     }
@@ -1200,7 +1261,7 @@ impl<'ctx> Compiler<'ctx> {
                         if evaluated.value.is_none() {
                             bail!("cannot call member '{}' without value", field);
                         }
-                        
+
                         // Check if it's a list type and handle list methods
                         if let OtterType::List = evaluated.ty.clone() {
                             // Handle list method calls like list.append()
@@ -1209,11 +1270,17 @@ impl<'ctx> Compiler<'ctx> {
                                 let arg_val = self.eval_expr(args[0].as_ref(), ctx)?;
                                 let method_name: String = match arg_val.ty {
                                     OtterType::Str => "append<list,string>".to_string(),
-                                    OtterType::I64 | OtterType::I32 => "append<list,int>".to_string(),
+                                    OtterType::I64 | OtterType::I32 => {
+                                        "append<list,int>".to_string()
+                                    }
                                     OtterType::F64 => "append<list,float>".to_string(),
                                     OtterType::Bool => "append<list,bool>".to_string(),
-                                    OtterType::List | OtterType::Opaque => "append<list,list>".to_string(),
-                                    _ => bail!("unsupported append argument type: {:?}", arg_val.ty),
+                                    OtterType::List | OtterType::Opaque => {
+                                        "append<list,list>".to_string()
+                                    }
+                                    _ => {
+                                        bail!("unsupported append argument type: {:?}", arg_val.ty)
+                                    }
                                 };
                                 implicit_self = Some(evaluated);
                                 method_name
@@ -1246,27 +1313,36 @@ impl<'ctx> Compiler<'ctx> {
             };
 
             // Handle overloaded builtins like len() - evaluate first arg to determine type
-            let (function, resolved_func_name, first_arg_evaluated) = if func_name == "len" && !args.is_empty() {
-                // Evaluate the first argument to determine its type
-                let arg_val = self.eval_expr(args[0].as_ref(), ctx)?;
-                let overloaded_name = match arg_val.ty {
-                    OtterType::Str => "len".to_string(),
-                    OtterType::List => "len<list>".to_string(),
-                    OtterType::Map => "len<map>".to_string(),
-                    _ => bail!("len() not supported for type {:?}", arg_val.ty),
-                };
-                if self.symbol_registry.contains(&overloaded_name) {
-                    (self.get_or_declare_ffi_function(&overloaded_name)?, overloaded_name, Some(arg_val))
+            let (function, resolved_func_name, first_arg_evaluated) =
+                if func_name == "len" && !args.is_empty() {
+                    // Evaluate the first argument to determine its type
+                    let arg_val = self.eval_expr(args[0].as_ref(), ctx)?;
+                    let overloaded_name = match arg_val.ty {
+                        OtterType::Str => "len".to_string(),
+                        OtterType::List => "len<list>".to_string(),
+                        OtterType::Map => "len<map>".to_string(),
+                        _ => bail!("len() not supported for type {:?}", arg_val.ty),
+                    };
+                    if self.symbol_registry.contains(&overloaded_name) {
+                        (
+                            self.get_or_declare_ffi_function(&overloaded_name)?,
+                            overloaded_name,
+                            Some(arg_val),
+                        )
+                    } else {
+                        bail!("Function {} not found", overloaded_name);
+                    }
+                } else if let Some(func) = self.declared_functions.get(&func_name) {
+                    (*func, func_name.clone(), None)
+                } else if self.symbol_registry.contains(&func_name) {
+                    (
+                        self.get_or_declare_ffi_function(&func_name)?,
+                        func_name.clone(),
+                        None,
+                    )
                 } else {
-                    bail!("Function {} not found", overloaded_name);
-                }
-            } else if let Some(func) = self.declared_functions.get(&func_name) {
-                (*func, func_name.clone(), None)
-            } else if self.symbol_registry.contains(&func_name) {
-                (self.get_or_declare_ffi_function(&func_name)?, func_name.clone(), None)
-            } else {
-                bail!("Function {} not found", func_name);
-            };
+                    bail!("Function {} not found", func_name);
+                };
 
             // Get parameter types upfront to avoid borrow issues
             let param_types: Vec<BasicTypeEnum> = function
@@ -1282,9 +1358,9 @@ impl<'ctx> Compiler<'ctx> {
                 let v = self_arg
                     .value
                     .ok_or_else(|| anyhow!("Cannot pass unit value as self"))?;
-                let param_type = param_types
-                    .first()
-                    .ok_or_else(|| anyhow!("Method '{}' missing self parameter", resolved_func_name))?;
+                let param_type = param_types.first().ok_or_else(|| {
+                    anyhow!("Method '{}' missing self parameter", resolved_func_name)
+                })?;
                 let converted = self.cast_argument_for_call(v, self_arg.ty.clone(), param_type)?;
                 arg_values.push(converted.into());
                 param_offset = 1;
@@ -1292,15 +1368,19 @@ impl<'ctx> Compiler<'ctx> {
 
             for (i, arg) in args.iter().enumerate() {
                 // Reuse first arg if it was already evaluated for len() dispatch
-                let arg_val = if i == 0 && first_arg_evaluated.is_some() {
-                    first_arg_evaluated.as_ref().unwrap().clone()
+                let arg_val = if i == 0 {
+                    if let Some(val) = first_arg_evaluated.as_ref() {
+                        val.clone()
+                    } else {
+                        self.eval_expr(arg.as_ref(), ctx)?
+                    }
                 } else {
                     self.eval_expr(arg.as_ref(), ctx)?
                 };
                 if let Some(v) = arg_val.value {
-                    let param_type = param_types
-                        .get(i + param_offset)
-                        .ok_or_else(|| anyhow!("Too many arguments for function {}", resolved_func_name))?;
+                    let param_type = param_types.get(i + param_offset).ok_or_else(|| {
+                        anyhow!("Too many arguments for function {}", resolved_func_name)
+                    })?;
                     let converted =
                         self.cast_argument_for_call(v, arg_val.ty.clone(), param_type)?;
                     arg_values.push(converted.into());
@@ -1315,7 +1395,8 @@ impl<'ctx> Compiler<'ctx> {
             // Get return value
             if let Some(ret_val) = call_site.try_as_basic_value().left() {
                 // Use declared return type if available, otherwise infer from LLVM type
-                let return_ty = self.function_return_types
+                let return_ty = self
+                    .function_return_types
                     .get(&resolved_func_name)
                     .cloned()
                     .unwrap_or_else(|| {
@@ -1464,9 +1545,9 @@ impl<'ctx> Compiler<'ctx> {
         // Append each element to the list
         for (idx, elem) in elements.iter().enumerate() {
             let elem_val = self.eval_expr(elem.as_ref(), ctx)?;
-            let elem_value = elem_val.value.ok_or_else(|| {
-                anyhow!("array element {} produced no value", idx)
-            })?;
+            let elem_value = elem_val
+                .value
+                .ok_or_else(|| anyhow!("array element {} produced no value", idx))?;
 
             // Determine which append function to use based on element type
             let append_fn_name = match elem_val.ty {
@@ -1481,7 +1562,7 @@ impl<'ctx> Compiler<'ctx> {
             let append_fn = self.get_or_declare_ffi_function(append_fn_name)?;
             let handle_arg: BasicMetadataValueEnum = handle.into();
             let elem_arg: BasicMetadataValueEnum = elem_value.into();
-            
+
             self.builder.build_call(
                 append_fn,
                 &[handle_arg, elem_arg],
@@ -1527,11 +1608,7 @@ impl<'ctx> Compiler<'ctx> {
             OtterType::List | OtterType::Opaque => {
                 // Try to convert list handle to string
                 // Opaque types might be list handles, so try stringify
-                self.call_ffi_returning_value(
-                    "stringify<list>",
-                    vec![base_value],
-                    "stringify_list",
-                )
+                self.call_ffi_returning_value("stringify<list>", vec![base_value], "stringify_list")
             }
             _ => bail!("cannot convert {:?} to string", ty),
         }

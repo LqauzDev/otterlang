@@ -329,7 +329,7 @@ pub fn build_executable(
             {
                 if output.status.success() {
                     let libs = String::from_utf8_lossy(&output.stdout);
-                    for lib_flag in libs.trim().split_whitespace() {
+                    for lib_flag in libs.split_whitespace() {
                         cc.arg(lib_flag);
                     }
                 } else {
@@ -345,11 +345,17 @@ pub fn build_executable(
                 cc.arg("-lxml2").arg("-lzstd");
             }
             // Standard system libraries
-            cc.arg("-lreadline").arg("-lncurses").arg("-lz").arg("-lffi").arg("-lc++");
+            cc.arg("-lreadline")
+                .arg("-lncurses")
+                .arg("-lz")
+                .arg("-lffi")
+                .arg("-lc++");
         } else if runtime_triple.is_windows() {
             cc.arg(&runtime_lib);
         } else {
-            cc.arg("-Wl,--whole-archive").arg(&runtime_lib).arg("-Wl,--no-whole-archive");
+            cc.arg("-Wl,--whole-archive")
+                .arg(&runtime_lib)
+                .arg("-Wl,--no-whole-archive");
         }
     }
 
@@ -622,7 +628,13 @@ pub fn build_shared_library(
         if runtime_triple.os == "darwin" {
             cc.arg("-force_load").arg(&runtime_lib);
             // Link against system libraries required by LLVM dependencies in runtime
-            cc.arg("-lxml2").arg("-lreadline").arg("-lncurses").arg("-lz").arg("-lffi").arg("-lc++").arg("-lzstd");
+            cc.arg("-lxml2")
+                .arg("-lreadline")
+                .arg("-lncurses")
+                .arg("-lz")
+                .arg("-lffi")
+                .arg("-lc++")
+                .arg("-lzstd");
         } else {
             cc.arg(&runtime_lib);
         }

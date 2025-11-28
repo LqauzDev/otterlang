@@ -25,6 +25,9 @@
       "include": "#enum-definition"
     },
     {
+      "include": "#enum-variant-definition"
+    },
+    {
       "include": "#struct-definition"
     },
     {
@@ -54,7 +57,13 @@
       "patterns": [
         {
           "name": "comment.line.number-sign.otterlang",
-          "match": "#.*$"
+          "begin": "#",
+          "end": "$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.otterlang"
+            }
+          }
         }
       ]
     },
@@ -81,6 +90,36 @@
           "match": "\\b(int|float|bool|string|str|unit|i32|i64|f64)\\b"
         },
         {
+          "name": "meta.type.generic.otterlang",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(<)([^>]+)(>)",
+          "captures": {
+            "1": {
+              "name": "support.type.otterlang"
+            },
+            "2": {
+              "name": "punctuation.bracket.angle.otterlang"
+            },
+            "3": {
+              "patterns": [
+                {
+                  "name": "support.type.generic.parameter.otterlang",
+                  "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+                },
+                {
+                  "include": "#types"
+                },
+                {
+                  "name": "punctuation.separator.otterlang",
+                  "match": ","
+                }
+              ]
+            },
+            "4": {
+              "name": "punctuation.bracket.angle.otterlang"
+            }
+          }
+        },
+        {
           "name": "support.type.result.otterlang",
           "match": "\\bResult\\b"
         },
@@ -89,12 +128,8 @@
           "match": "\\bOption\\b"
         },
         {
-          "name": "support.type.generic.otterlang",
-          "match": "<[^>]+>"
-        },
-        {
           "name": "support.type.otterlang",
-          "match": "\\b[A-Z][a-zA-Z0-9_]*(?:<[^>]+>)?\\b"
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
     },
@@ -304,6 +339,39 @@
         }
       ]
     },
+    "enum-variant-definition": {
+      "patterns": [
+        {
+          "name": "meta.enum.variant.definition.otterlang",
+          "match": "\\s*([A-Z][a-zA-Z0-9_]*)\\s*(:)\\s*(\\()([^)]*)(\\))",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.enum.variant.otterlang"
+            },
+            "2": {
+              "name": "punctuation.definition.colon.otterlang"
+            },
+            "3": {
+              "name": "punctuation.bracket.round.otterlang"
+            },
+            "4": {
+              "patterns": [
+                {
+                  "include": "#types"
+                },
+                {
+                  "name": "punctuation.separator.otterlang",
+                  "match": ","
+                }
+              ]
+            },
+            "5": {
+              "name": "punctuation.bracket.round.otterlang"
+            }
+          }
+        }
+      ]
+    },
     "struct-definition": {
       "patterns": [
         {
@@ -508,6 +576,14 @@
     },
     "identifiers": {
       "patterns": [
+        {
+          "name": "variable.language.self.otterlang",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "variable.other.constant.otterlang",
+          "match": "\\b[A-Z][A-Z0-9_]*\\b"
+        },
         {
           "name": "variable.other.otterlang",
           "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"

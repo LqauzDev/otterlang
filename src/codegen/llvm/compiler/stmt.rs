@@ -1,8 +1,9 @@
 use anyhow::{Result, bail};
-use inkwell::values::FunctionValue;
+use inkwell::values::{BasicValueEnum, FunctionValue};
 
 use crate::codegen::llvm::compiler::Compiler;
 use crate::codegen::llvm::compiler::types::{EvaluatedValue, FunctionContext, OtterType, Variable};
+use crate::typecheck::TypeInfo;
 use ast::nodes::{Block, Expr, Statement};
 
 struct IteratorRuntime<'ctx> {
@@ -412,6 +413,8 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.position_at_end(exit_bb);
             Ok(())
         } else {
+            // TEMP DEBUG
+            eprintln!("iterable ty: {:?}", self.expr_type(iterable));
             // Handle other iterable types (arrays, strings, etc.)
             let iterable_val = self.eval_expr(iterable, ctx)?;
             let iterable_ty = iterable_val.ty.clone();
@@ -463,32 +466,17 @@ impl<'ctx> Compiler<'ctx> {
                 }
                 OtterType::List => {
                     // Array/list iteration
-                    let (iter_create_fn, iter_has_next_fn, iter_next_fn, iter_free_fn) = (
-                        *self
-                            .declared_functions
-                            .get("__otter_iter_array")
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("Array iterator runtime not available")
-                            })?,
-                        *self
-                            .declared_functions
-                            .get("__otter_iter_has_next_array")
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("Array iterator runtime not available")
-                            })?,
-                        *self
-                            .declared_functions
-                            .get("__otter_iter_next_array")
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("Array iterator runtime not available")
-                            })?,
-                        *self
-                            .declared_functions
-                            .get("__otter_iter_free_array")
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("Array iterator runtime not available")
-                            })?,
-                    );
+                    let iter_create_fn = self.get_or_declare_ffi_function("__otter_iter_array")?;
+                    let iter_has_next_fn =
+                        self.get_or_declare_ffi_function("__otter_iter_has_next_array")?;
+                    let iter_next_fn =
+                        self.get_or_declare_ffi_function("__otter_iter_next_array")?;
+                    let iter_free_fn =
+                        self.get_or_declare_ffi_function("__otter_iter_free_array")?;
+
+                    let element_type = self
+                        .list_element_type(iterable)
+                        .unwrap_or(OtterType::Opaque);
 
                     self.lower_collection_for_loop(
                         var,
@@ -501,7 +489,7 @@ impl<'ctx> Compiler<'ctx> {
                             has_next_fn: iter_has_next_fn,
                             next_fn: iter_next_fn,
                             free_fn: iter_free_fn,
-                            element_type: OtterType::Opaque,
+                            element_type,
                         },
                     )
                 }
@@ -543,11 +531,10 @@ impl<'ctx> Compiler<'ctx> {
             "iter_handle",
         )?;
 
-        let iter_ptr = iter_handle
+        let iter_val = iter_handle
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| anyhow::anyhow!("Iterator creation failed"))?
-            .into_pointer_value();
+            .ok_or_else(|| anyhow::anyhow!("Iterator creation failed"))?;
 
         // Create loop variable allocation
         let element_ty = element_type.clone();
@@ -558,7 +545,7 @@ impl<'ctx> Compiler<'ctx> {
             var.to_string(),
             Variable {
                 ptr: var_alloca,
-                ty: element_ty,
+                ty: element_ty.clone(),
             },
         );
 
@@ -577,7 +564,7 @@ impl<'ctx> Compiler<'ctx> {
         // Check if iterator has next element
         let has_next_call = self
             .builder
-            .build_call(has_next_fn, &[iter_ptr.into()], "has_next")?;
+            .build_call(has_next_fn, &[iter_val.into()], "has_next")?;
 
         let has_next = has_next_call
             .try_as_basic_value()
@@ -594,15 +581,17 @@ impl<'ctx> Compiler<'ctx> {
         // Get next element
         let next_call = self
             .builder
-            .build_call(next_fn, &[iter_ptr.into()], "next_element")?;
+            .build_call(next_fn, &[iter_val.into()], "next_element")?;
 
         let element_val = next_call
             .try_as_basic_value()
             .left()
             .ok_or_else(|| anyhow::anyhow!("next element failed"))?;
 
-        // Store element in variable
-        self.builder.build_store(var_alloca, element_val)?;
+        // Store element in variable (convert raw i64 payloads to the expected type)
+        if let Some(value) = self.prepare_iter_element_for_store(element_val, &element_ty)? {
+            self.builder.build_store(var_alloca, value)?;
+        }
 
         // Execute loop body
         ctx.push_loop(loop_cond_bb, cleanup_bb);
@@ -623,7 +612,7 @@ impl<'ctx> Compiler<'ctx> {
 
         // Cleanup block - free iterator
         self.builder.position_at_end(cleanup_bb);
-        self.builder.build_call(free_fn, &[iter_ptr.into()], "")?;
+        self.builder.build_call(free_fn, &[iter_val.into()], "")?;
         self.builder.build_unconditional_branch(exit_bb)?;
 
         self.builder.position_at_end(exit_bb);
@@ -632,4 +621,75 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     // Exception handling (try/except/finally/raise) removed - use Result<T, E> pattern matching instead
+    fn list_element_type(&self, iterable: &Expr) -> Option<OtterType> {
+        if let Some(ty) = self.expr_type(iterable) {
+            eprintln!("expr type: {:?}", ty);
+            self.resolve_list_element_type_from_typeinfo(ty)
+        } else {
+            eprintln!("expr type missing for iterable");
+            None
+        }
+    }
+
+    fn resolve_list_element_type_from_typeinfo(&self, ty: &TypeInfo) -> Option<OtterType> {
+        match ty {
+            TypeInfo::List(inner) => self.typeinfo_to_otter_type(inner),
+            TypeInfo::Alias { underlying, .. } => {
+                self.resolve_list_element_type_from_typeinfo(underlying)
+            }
+            _ => None,
+        }
+    }
+
+    fn typeinfo_to_otter_type(&self, ty: &TypeInfo) -> Option<OtterType> {
+        match ty {
+            TypeInfo::Unit => Some(OtterType::Unit),
+            TypeInfo::Bool => Some(OtterType::Bool),
+            TypeInfo::I32 => Some(OtterType::I32),
+            TypeInfo::I64 => Some(OtterType::I64),
+            TypeInfo::F64 => Some(OtterType::F64),
+            TypeInfo::Str => Some(OtterType::Str),
+            TypeInfo::List(_) => Some(OtterType::List),
+            TypeInfo::Dict { .. } => Some(OtterType::Map),
+            TypeInfo::Struct { name, .. } => self.struct_id(name).map(OtterType::Struct),
+            TypeInfo::Alias { underlying, .. } => self.typeinfo_to_otter_type(underlying),
+            _ => None,
+        }
+    }
+
+    fn prepare_iter_element_for_store(
+        &mut self,
+        raw_value: BasicValueEnum<'ctx>,
+        element_type: &OtterType,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let value = match element_type {
+            OtterType::Unit => return Ok(None),
+            OtterType::I64 | OtterType::Opaque | OtterType::List | OtterType::Map => raw_value,
+            OtterType::Struct(_) | OtterType::Tuple(_) => raw_value,
+            OtterType::I32 => {
+                let int_val = raw_value.into_int_value();
+                self.builder
+                    .build_int_truncate(int_val, self.context.i32_type(), "iter_i32")?
+                    .into()
+            }
+            OtterType::F64 => {
+                self.builder
+                    .build_bit_cast(raw_value, self.context.f64_type(), "iter_f64")?
+            }
+            OtterType::Bool => {
+                let int_val = raw_value.into_int_value();
+                self.builder
+                    .build_int_truncate(int_val, self.context.bool_type(), "iter_bool")?
+                    .into()
+            }
+            OtterType::Str => {
+                let int_val = raw_value.into_int_value();
+                self.builder
+                    .build_int_to_ptr(int_val, self.string_ptr_type, "iter_str")?
+                    .into()
+            }
+        };
+
+        Ok(Some(value))
+    }
 }

@@ -2,8 +2,8 @@ use chumsky::Stream;
 use chumsky::prelude::*;
 
 use ast::nodes::{
-    BinaryOp, Block, EnumVariant, Expr, FStringPart, Function, Literal, MatchArm,
-    Node, NumberLiteral, Param, Pattern, Program, Statement, Type, UnaryOp, UseImport,
+    BinaryOp, Block, EnumVariant, Expr, FStringPart, Function, Literal, MatchArm, Node,
+    NumberLiteral, Param, Pattern, Program, Statement, Type, UnaryOp, UseImport,
 };
 
 use common::Span;

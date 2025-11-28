@@ -108,7 +108,10 @@ impl<'ctx> Compiler<'ctx> {
     pub(crate) fn enum_type(&self, name: &str) -> Option<&TypeInfo> {
         // Search expr_types for an enum type with this name
         self.expr_types.values().find(|ty| {
-            if let TypeInfo::Enum { name: enum_name, .. } = ty {
+            if let TypeInfo::Enum {
+                name: enum_name, ..
+            } = ty
+            {
                 enum_name == name
             } else {
                 false
@@ -445,7 +448,12 @@ impl<'ctx> Compiler<'ctx> {
             self.context.void_type().fn_type(&param_types, false)
         };
 
-        let function = self.module.add_function(&func.name, fn_type, None);
+        let llvm_name = if func.name == "main" {
+            "otter_entry"
+        } else {
+            &func.name
+        };
+        let function = self.module.add_function(llvm_name, fn_type, None);
         self.declared_functions.insert(func.name.clone(), function);
 
         // Store return type for later use in eval_call_expr
@@ -454,7 +462,8 @@ impl<'ctx> Compiler<'ctx> {
         } else {
             OtterType::Unit
         };
-        self.function_return_types.insert(func.name.clone(), ret_otter_type);
+        self.function_return_types
+            .insert(func.name.clone(), ret_otter_type);
 
         // Store default values
         let defaults: Vec<Option<Expr>> = func
