@@ -377,7 +377,12 @@ pub fn build_executable(
                 .arg("-lm")
                 .arg("-ldl")
                 .arg("-lpthread")
-                .arg("-lz");
+                .arg("-lz")
+                .arg("-lxml2")
+                .arg("-ledit")
+                .arg("-lffi")
+                .arg("-lzstd")
+                .arg("-ltinfo");
         }
     }
 
@@ -681,7 +686,12 @@ pub fn build_shared_library(
                 .arg("-lm")
                 .arg("-ldl")
                 .arg("-lpthread")
-                .arg("-lz");
+                .arg("-lz")
+                .arg("-lxml2")
+                .arg("-ledit")
+                .arg("-lffi")
+                .arg("-lzstd")
+                .arg("-ltinfo");
         }
     }
 

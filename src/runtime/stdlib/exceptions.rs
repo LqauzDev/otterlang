@@ -485,56 +485,6 @@ fn register_exception_runtime_symbols(registry: &SymbolRegistry) {
         symbol: "otter_iter_free_f64".into(),
         signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Unit),
     });
-
-    // Array/list iterators
-    registry.register(FfiFunction {
-        name: "__otter_iter_array".into(),
-        symbol: "otter_iter_array".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Opaque),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_has_next_array".into(),
-        symbol: "otter_iter_has_next_array".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Bool),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_next_array".into(),
-        symbol: "otter_iter_next_array".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::I64),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_free_array".into(),
-        symbol: "otter_iter_free_array".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Unit),
-    });
-
-    // String iterators (character iteration)
-    registry.register(FfiFunction {
-        name: "__otter_iter_string".into(),
-        symbol: "otter_iter_string".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Opaque),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_has_next_string".into(),
-        symbol: "otter_iter_has_next_string".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Bool),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_next_string".into(),
-        symbol: "otter_iter_next_string".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::I64),
-    });
-
-    registry.register(FfiFunction {
-        name: "__otter_iter_free_string".into(),
-        symbol: "otter_iter_free_string".into(),
-        signature: FfiSignature::new(vec![FfiType::Opaque], FfiType::Unit),
-    });
 }
 
 inventory::submit! {
