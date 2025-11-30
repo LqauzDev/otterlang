@@ -21,13 +21,12 @@ use super::config::{
 /// Check if a library is available on the system
 fn check_library_available(lib_name: &str) -> bool {
     // Try pkg-config first
-    if let Ok(output) = Command::new("pkg-config")
+    if Command::new("pkg-config")
         .args(["--exists", lib_name])
         .output()
+        .map_or(false, |output| output.status.success())
     {
-        if output.status.success() {
-            return true;
-        }
+        return true;
     }
 
     // Try checking common library paths
@@ -44,13 +43,11 @@ fn check_library_available(lib_name: &str) -> bool {
     for path in &common_paths {
         let lib_file = format!("lib{}.so", lib_name);
         let lib_file_a = format!("lib{}.a", lib_name);
-        
-        if Path::new(path).join(&lib_file).exists()
-            || Path::new(path).join(&lib_file_a).exists()
-        {
+
+        if Path::new(path).join(&lib_file).exists() || Path::new(path).join(&lib_file_a).exists() {
             return true;
         }
-        
+
         // Check for versioned .so files
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
@@ -320,17 +317,20 @@ pub fn build_executable(
             cc.arg("-Wl,-w"); // Suppress linker warnings
         }
 
-        // Skip C runtime when Rust runtime is available to avoid duplicate symbols
-        // The C runtime is only needed as a fallback when Rust runtime isn't available
-        if use_rust_runtime {
-            // Use Rust runtime - don't link C runtime
-            cc.arg(&object_path).arg("-o").arg(output);
-        } else if let Some(ref rt_o) = runtime_o {
-            // Fallback to C runtime if Rust runtime doesn't exist
-            cc.arg(&object_path).arg(rt_o).arg("-o").arg(output);
-        } else {
-            cc.arg(&object_path).arg("-o").arg(output);
+        // Always link the generated object first
+        cc.arg(&object_path);
+
+        // Only include the C runtime shim when the Rust static runtime isn't available
+        if !use_rust_runtime {
+            if let Some(ref rt_o) = runtime_o {
+                cc.arg(rt_o);
+            }
         }
+
+        // Delay specifying the output until after we've queued all inputs and flags
+        // so the linker sees additional libraries before the final output parameter.
+        // (This also matches the convention `cc obj ... libs ... -o binary`.)
+        cc.arg("-o").arg(output);
     }
 
     // Apply target-specific linker flags
@@ -410,11 +410,13 @@ pub fn build_executable(
                 .arg("-lnetapi32")
                 .arg("-luserenv")
                 .arg("-ladvapi32")
+                .arg("-lpowrprof")
                 .arg("-lole32")
                 .arg("-loleaut32")
                 .arg("-lpsapi")
                 .arg("-lntdll")
                 .arg("-lshell32")
+                .arg("-lsecur32")
                 .arg("-lbcrypt")
                 .arg("-luser32");
         } else {
@@ -429,7 +431,7 @@ pub fn build_executable(
                 .arg("-lxml2")
                 .arg("-lffi")
                 .arg("-lzstd");
-            
+
             // LLVM's LineEditor requires libedit, try to link it
             // If not available, try readline which provides compatible history functions
             if check_library_available("edit") {
@@ -440,7 +442,7 @@ pub fn build_executable(
                 // Try both anyway - let the linker fail with a clear error if neither is installed
                 cc.arg("-ledit");
             }
-            
+
             cc.arg("-ltinfo");
         }
     }
@@ -732,11 +734,13 @@ pub fn build_shared_library(
                 .arg("-lnetapi32")
                 .arg("-luserenv")
                 .arg("-ladvapi32")
+                .arg("-lpowrprof")
                 .arg("-lole32")
                 .arg("-loleaut32")
                 .arg("-lpsapi")
                 .arg("-lntdll")
                 .arg("-lshell32")
+                .arg("-lsecur32")
                 .arg("-lbcrypt")
                 .arg("-luser32");
         } else {
@@ -749,7 +753,7 @@ pub fn build_shared_library(
                 .arg("-lxml2")
                 .arg("-lffi")
                 .arg("-lzstd");
-            
+
             // LLVM's LineEditor requires libedit, try to link it
             // If not available, try readline which provides compatible history functions
             if check_library_available("edit") {
@@ -760,7 +764,7 @@ pub fn build_shared_library(
                 // Try both anyway - let the linker fail with a clear error if neither is installed
                 cc.arg("-ledit");
             }
-            
+
             cc.arg("-ltinfo");
         }
     }

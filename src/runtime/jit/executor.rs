@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use crate::runtime::jit::engine::JitEngine;
 use crate::runtime::symbol_registry::SymbolRegistry;
 use anyhow::Result;
 use ast::nodes::Program;
+use std::collections::HashMap;
 
 /// Simplified JIT executor for running programs
 pub struct JitExecutor {
@@ -66,7 +66,7 @@ impl JitExecutor {
         // In a real JIT, this would trigger re-compilation with higher optimization levels (O3)
         // For now, we just log it or simulate it
         // println!("Optimizing hot function: {}", name);
-        
+
         // Example: self.engine.recompile(name, OptLevel::Aggressive)?;
         Ok(())
     }

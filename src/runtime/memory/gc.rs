@@ -276,7 +276,7 @@ impl GenerationalGC {
         // In a real implementation, we'd filter roots. Here we check all roots.
         let roots = self.old_gen.roots.read();
         let nursery_objects = self.nursery_objects.read();
-        
+
         // Find reachable objects in nursery
         let mut reachable = HashSet::new();
         let mut stack: Vec<usize> = roots.iter().copied().collect();
@@ -289,7 +289,7 @@ impl GenerationalGC {
             // If it's in nursery, mark it
             if nursery_objects.contains_key(&ptr) {
                 reachable.insert(ptr);
-                
+
                 // Trace children
                 if let Some(info) = nursery_objects.get(&ptr) {
                     for &ref_ptr in &info.references {
@@ -300,7 +300,7 @@ impl GenerationalGC {
                 // If it's in old gen, we might need to trace into nursery
                 // (This requires write barriers in full impl, simplified here)
                 if let Some(info) = self.old_gen.objects.read().get(&ptr) {
-                     for &ref_ptr in &info.references {
+                    for &ref_ptr in &info.references {
                         if !reachable.contains(&ref_ptr) {
                             stack.push(ref_ptr);
                         }
@@ -317,11 +317,12 @@ impl GenerationalGC {
                 // Since we don't have direct memory access to the content structure easily here without unsafe casting,
                 // we simulate promotion by registering in old gen.
                 // Real impl would: memcpy(new_ptr, ptr, info.size)
-                
+
                 // For this simulation, we assume the pointer address stays valid (which isn't true for copying GC)
                 // OR we just register it in old gen and "pretend" we moved it.
                 // To be safer for this codebase, we'll just register it in old gen.
-                self.old_gen.register_object(ptr, info.size, info.references.clone());
+                self.old_gen
+                    .register_object(ptr, info.size, info.references.clone());
             }
         }
 
@@ -338,7 +339,7 @@ impl GenerationalGC {
         // Clear nursery tracking
         // Note: We don't actually reset the bump allocator here because we "promoted" by keeping pointers.
         // In a real copying GC, we would reset the allocator because we moved everything out.
-        // self.nursery.reset(); 
+        // self.nursery.reset();
         drop(nursery_objects);
         self.nursery_objects.write().clear();
 

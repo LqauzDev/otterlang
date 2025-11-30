@@ -411,9 +411,7 @@ pub unsafe extern "C" fn otter_builtin_select(
         // Busy wait fallback if no task runtime
         std::thread::sleep(Duration::from_millis(1));
         // Recursive call to retry (or loop)
-        unsafe {
-            otter_builtin_select(cases, num_cases, default_available)
-        }
+        unsafe { otter_builtin_select(cases, num_cases, default_available) }
     }
 }
 

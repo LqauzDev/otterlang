@@ -161,6 +161,8 @@ impl<'ctx> Compiler<'ctx> {
             .append_basic_block(function, "match_arm_check_0");
         self.builder.build_unconditional_branch(next_check_bb)?;
 
+        let matched_type_info = self.expr_type(value.as_ref().as_ref()).cloned();
+
         for (i, arm) in arms.iter().enumerate() {
             self.builder.position_at_end(next_check_bb);
 
@@ -178,6 +180,7 @@ impl<'ctx> Compiler<'ctx> {
             self.compile_pattern_match(
                 &arm.as_ref().pattern,
                 &matched_val,
+                matched_type_info.clone(),
                 body_bb,
                 next_check_bb,
                 ctx,
@@ -258,10 +261,7 @@ impl<'ctx> Compiler<'ctx> {
                 }
             };
 
-            Ok(EvaluatedValue::with_value(
-                phi.as_basic_value(),
-                result_ty,
-            ))
+            Ok(EvaluatedValue::with_value(phi.as_basic_value(), result_ty))
         } else {
             Ok(EvaluatedValue {
                 ty: OtterType::Unit,
@@ -274,6 +274,7 @@ impl<'ctx> Compiler<'ctx> {
         &mut self,
         pattern: &Node<ast::nodes::Pattern>,
         matched_val: &EvaluatedValue<'ctx>,
+        matched_type: Option<TypeInfo>,
         success_bb: inkwell::basic_block::BasicBlock<'ctx>,
         fail_bb: inkwell::basic_block::BasicBlock<'ctx>,
         ctx: &mut FunctionContext<'ctx>,
@@ -371,24 +372,15 @@ impl<'ctx> Compiler<'ctx> {
                         .build_conditional_branch(tag_match, field_check_bb, fail_bb)?;
                     self.builder.position_at_end(field_check_bb);
 
-                    // Get enum type to determine field types
-                    let enum_type = self
-                        .enum_type(enum_name)
-                        .ok_or_else(|| anyhow!("Enum type not found for {}", enum_name))?
-                        .clone();
-                    let TypeInfo::Enum { variants, .. } = enum_type else {
-                        bail!("Expected enum type for {}", enum_name);
-                    };
-                    let variant_info = variants
-                        .get(variant)
+                    // Get concrete field types for this variant (respecting generic substitutions)
+                    let variant_fields = self
+                        .resolve_enum_variant_fields(enum_name, variant, matched_type.as_ref())
                         .ok_or_else(|| {
                             anyhow!("Variant {} not found in enum {}", variant, enum_name)
-                        })?
-                        .clone();
+                        })?;
 
                     for (field_idx, field_pattern) in fields.iter().enumerate() {
-                        let field_type = variant_info
-                            .fields
+                        let field_type = variant_fields
                             .get(field_idx)
                             .ok_or_else(|| {
                                 anyhow!(
@@ -445,6 +437,7 @@ impl<'ctx> Compiler<'ctx> {
                         self.compile_pattern_match(
                             field_pattern,
                             &field_eval,
+                            Some(field_type.clone()),
                             next_field_bb,
                             fail_bb,
                             ctx,
@@ -513,6 +506,12 @@ impl<'ctx> Compiler<'ctx> {
                     .build_conditional_branch(len_check, elem_check_bb, fail_bb)?;
                 self.builder.position_at_end(elem_check_bb);
 
+                // Track the element type if available so nested patterns get concrete type info
+                let element_type = matched_type.as_ref().and_then(|ty| match ty {
+                    TypeInfo::List(inner) => Some((**inner).clone()),
+                    _ => None,
+                });
+
                 for (idx, elem_pattern) in patterns.iter().enumerate() {
                     let get_elem_fn = self.get_or_declare_ffi_function("runtime.list.get")?;
                     let idx_val = self.context.i64_type().const_int(idx as u64, false);
@@ -538,7 +537,14 @@ impl<'ctx> Compiler<'ctx> {
                         success_bb
                     };
 
-                    self.compile_pattern_match(elem_pattern, &elem_eval, next_bb, fail_bb, ctx)?;
+                    self.compile_pattern_match(
+                        elem_pattern,
+                        &elem_eval,
+                        element_type.clone(),
+                        next_bb,
+                        fail_bb,
+                        ctx,
+                    )?;
 
                     if idx < patterns.len() - 1 || rest.is_some() {
                         self.builder.position_at_end(next_bb);
@@ -567,6 +573,58 @@ impl<'ctx> Compiler<'ctx> {
 
                 Ok(())
             }
+        }
+    }
+
+    fn resolve_enum_variant_fields(
+        &self,
+        enum_name: &str,
+        variant: &str,
+        matched_type: Option<&TypeInfo>,
+    ) -> Option<Vec<TypeInfo>> {
+        if let Some(ty) = matched_type {
+            if let Some(fields) = self.enum_variant_fields_from_type(ty, enum_name, variant) {
+                return Some(fields);
+            }
+        }
+
+        self.enum_type(enum_name)
+            .and_then(|ty| self.enum_variant_fields_from_type(ty, enum_name, variant))
+    }
+
+    fn enum_variant_fields_from_type(
+        &self,
+        ty: &TypeInfo,
+        enum_name: &str,
+        variant: &str,
+    ) -> Option<Vec<TypeInfo>> {
+        match ty {
+            TypeInfo::Enum { name, variants, .. } if name == enum_name => {
+                variants.get(variant).map(|info| info.fields.clone())
+            }
+            TypeInfo::Alias { underlying, .. } => {
+                self.enum_variant_fields_from_type(underlying, enum_name, variant)
+            }
+            TypeInfo::Generic { base, args } if base == enum_name => {
+                // Attempt to find a concrete instantiation with the same type arguments
+                self.expr_types.values().find_map(|candidate| {
+                    if let TypeInfo::Enum {
+                        name,
+                        args: enum_args,
+                        variants,
+                    } = candidate
+                    {
+                        if name == enum_name
+                            && enum_args.len() == args.len()
+                            && enum_args.iter().zip(args.iter()).all(|(a, b)| a == b)
+                        {
+                            return variants.get(variant).map(|info| info.fields.clone());
+                        }
+                    }
+                    None
+                })
+            }
+            _ => None,
         }
     }
 
@@ -677,7 +735,11 @@ impl<'ctx> Compiler<'ctx> {
         Ok(result)
     }
 
-    fn eval_literal(&mut self, lit: &Literal, type_info: Option<&TypeInfo>) -> Result<EvaluatedValue<'ctx>> {
+    fn eval_literal(
+        &mut self,
+        lit: &Literal,
+        type_info: Option<&TypeInfo>,
+    ) -> Result<EvaluatedValue<'ctx>> {
         match lit {
             Literal::Number(n) => {
                 // Use type checker's type information if available
@@ -705,7 +767,7 @@ impl<'ctx> Compiler<'ctx> {
                         OtterType::I64
                     }
                 };
-                
+
                 match inferred_type {
                     OtterType::I64 => {
                         // Convert f64 to i64, then to u64 for const_int
@@ -714,7 +776,10 @@ impl<'ctx> Compiler<'ctx> {
                         Ok(EvaluatedValue::with_value(val.into(), OtterType::I64))
                     }
                     OtterType::I32 => {
-                        let val = self.context.i32_type().const_int((n.value as i32) as u64, false);
+                        let val = self
+                            .context
+                            .i32_type()
+                            .const_int((n.value as i32) as u64, false);
                         Ok(EvaluatedValue::with_value(val.into(), OtterType::I32))
                     }
                     OtterType::F64 => {
@@ -1157,15 +1222,19 @@ impl<'ctx> Compiler<'ctx> {
             }
             (OtterType::F64, OtterType::Opaque) => {
                 let float_val = value.into_float_value();
-                Ok(self
-                    .builder
-                    .build_bit_cast(float_val, self.context.i64_type(), "f64_to_opaque")?)
+                Ok(self.builder.build_bit_cast(
+                    float_val,
+                    self.context.i64_type(),
+                    "f64_to_opaque",
+                )?)
             }
             (OtterType::Opaque, OtterType::F64) => {
                 let int_val = value.into_int_value();
-                Ok(self
-                    .builder
-                    .build_bit_cast(int_val, self.context.f64_type(), "opaque_to_f64")?)
+                Ok(self.builder.build_bit_cast(
+                    int_val,
+                    self.context.f64_type(),
+                    "opaque_to_f64",
+                )?)
             }
             (OtterType::Bool, OtterType::Opaque) => {
                 let bool_val = value.into_int_value();
