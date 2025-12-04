@@ -60,7 +60,7 @@ static RUNTIME_VALUES: Lazy<RwLock<std::collections::HashMap<HandleId, RuntimeVa
 const TAG_SHIFT: u32 = 56;
 const HANDLE_MASK: u64 = (1u64 << TAG_SHIFT) - 1;
 
-fn encode_runtime_value(value: &Value) -> u64 {
+pub(crate) fn encode_runtime_value(value: &Value) -> u64 {
     // For simple scalar values that fit in 56 bits without loss, encode directly
     match value {
         Value::Unit => (ValueKind::Unit as u64) << TAG_SHIFT,

@@ -87,9 +87,11 @@ impl<'ctx> Compiler<'ctx> {
                 )?;
                 self.builder.build_store(field_ptr, loaded)?;
             }
-            let raw_ptr = self
-                .builder
-                .build_pointer_cast(context_ptr, self.raw_ptr_type(), "spawn_ctx_raw")?;
+            let raw_ptr = self.builder.build_pointer_cast(
+                context_ptr,
+                self.raw_ptr_type(),
+                "spawn_ctx_raw",
+            )?;
             let push_fn = self.get_spawn_context_push_fn();
             let id_const = self.context.i64_type().const_int(spawn_id, false);
             self.builder
@@ -136,9 +138,11 @@ impl<'ctx> Compiler<'ctx> {
                 .ok_or_else(|| anyhow!("spawn context queue returned null"))?
                 .into_pointer_value();
             raw_ptr = Some(value);
-            let typed_ptr = self
-                .builder
-                .build_pointer_cast(value, self.struct_ptr_type(struct_type), "spawn_ctx")?;
+            let typed_ptr = self.builder.build_pointer_cast(
+                value,
+                self.struct_ptr_type(struct_type),
+                "spawn_ctx",
+            )?;
 
             for (index, field) in captures.iter().enumerate() {
                 let field_ptr = self.builder.build_struct_gep(
@@ -390,8 +394,10 @@ impl<'ctx> Compiler<'ctx> {
         let callback_type = self.context.void_type().fn_type(&[], false);
         #[allow(deprecated)]
         let callback_ptr = callback_type.ptr_type(AddressSpace::default());
-        let fn_type =
-            self.context.i64_type().fn_type(&[callback_ptr.into()], false);
+        let fn_type = self
+            .context
+            .i64_type()
+            .fn_type(&[callback_ptr.into()], false);
         let function = self.module.add_function("otter_task_spawn", fn_type, None);
         self.declared_functions
             .insert("__task_spawn".to_string(), function);

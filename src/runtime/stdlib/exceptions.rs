@@ -1,9 +1,10 @@
+use std::backtrace::Backtrace;
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 // Import builtins for list/map access
-use crate::runtime::stdlib::builtins::{LISTS, Value};
+use crate::runtime::stdlib::builtins::{self, LISTS, Value};
 
 // ============================================================================
 // Exception Runtime Support
@@ -21,6 +22,46 @@ thread_local! {
     static CURRENT_EXCEPTION: RefCell<Option<OtterException>> = const { RefCell::new(None) };
 }
 
+fn make_c_string(value: &str) -> *mut c_char {
+    CString::new(value)
+        .unwrap_or_else(|_| CString::new("invalid utf-8 in exception").unwrap())
+        .into_raw()
+}
+
+fn dispose_exception(exception: OtterException) {
+    unsafe {
+        if !exception.message.is_null() {
+            drop(CString::from_raw(exception.message));
+        }
+        if !exception.exception_type.is_null() {
+            drop(CString::from_raw(exception.exception_type));
+        }
+        if !exception.stack_trace.is_null() {
+            drop(CString::from_raw(exception.stack_trace));
+        }
+    }
+}
+
+fn set_current_exception(exception: OtterException) {
+    CURRENT_EXCEPTION.with(|exc| {
+        let mut slot = exc.borrow_mut();
+        if let Some(prev) = slot.take() {
+            dispose_exception(prev);
+        }
+        *slot = Some(exception);
+    });
+}
+
+fn store_exception(message: String, exception_type: String, stack_trace: Option<String>) {
+    let stack_trace = stack_trace.unwrap_or_else(capture_stack_trace);
+    let exception = OtterException {
+        message: make_c_string(&message),
+        exception_type: make_c_string(&exception_type),
+        stack_trace: make_c_string(&stack_trace),
+    };
+    set_current_exception(exception);
+}
+
 /// Throw an exception with a message
 ///
 /// # Safety
@@ -34,15 +75,34 @@ pub unsafe extern "C" fn otter_throw_exception(message: *const c_char) {
     let msg = unsafe { CStr::from_ptr(message) }
         .to_string_lossy()
         .into_owned();
-    let exception = OtterException {
-        message: CString::new(msg.clone()).unwrap().into_raw(),
-        exception_type: CString::new("Exception").unwrap().into_raw(),
-        stack_trace: CString::new(capture_stack_trace()).unwrap().into_raw(),
+    store_exception(msg, "Exception".to_string(), None);
+}
+
+/// Throw an exception with an explicit type label.
+///
+/// # Safety
+/// All pointers must reference valid UTF-8 strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn otter_throw_typed_exception(
+    message: *const c_char,
+    exception_type: *const c_char,
+) {
+    if message.is_null() {
+        return;
+    }
+
+    let msg = unsafe { CStr::from_ptr(message) }
+        .to_string_lossy()
+        .into_owned();
+    let exception_type = if exception_type.is_null() {
+        "Exception".to_string()
+    } else {
+        unsafe { CStr::from_ptr(exception_type) }
+            .to_string_lossy()
+            .into_owned()
     };
 
-    CURRENT_EXCEPTION.with(|exc| {
-        *exc.borrow_mut() = Some(exception);
-    });
+    store_exception(msg, exception_type, None);
 }
 
 /// Check if there's a current exception
@@ -63,29 +123,42 @@ pub extern "C" fn otter_get_exception_message() -> *mut c_char {
     })
 }
 
+/// Get the current exception type label
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_get_exception_type() -> *mut c_char {
+    CURRENT_EXCEPTION.with(|exc| {
+        if let Some(ref exception) = *exc.borrow() {
+            exception.exception_type
+        } else {
+            std::ptr::null_mut()
+        }
+    })
+}
+
+/// Get the captured stack trace for the current exception
+#[unsafe(no_mangle)]
+pub extern "C" fn otter_get_exception_stack_trace() -> *mut c_char {
+    CURRENT_EXCEPTION.with(|exc| {
+        if let Some(ref exception) = *exc.borrow() {
+            exception.stack_trace
+        } else {
+            std::ptr::null_mut()
+        }
+    })
+}
+
 /// Clear the current exception
 #[unsafe(no_mangle)]
 pub extern "C" fn otter_clear_exception() {
     CURRENT_EXCEPTION.with(|exc| {
         if let Some(exception) = exc.borrow_mut().take() {
-            unsafe {
-                if !exception.message.is_null() {
-                    drop(CString::from_raw(exception.message));
-                }
-                if !exception.exception_type.is_null() {
-                    drop(CString::from_raw(exception.exception_type));
-                }
-                if !exception.stack_trace.is_null() {
-                    drop(CString::from_raw(exception.stack_trace));
-                }
-            }
+            dispose_exception(exception);
         }
     });
 }
 
 fn capture_stack_trace() -> String {
-    // Simple stack trace - in production would use backtrace crate
-    "  at <unknown>:0:0".to_string()
+    Backtrace::force_capture().to_string()
 }
 
 // ============================================================================
@@ -232,13 +305,13 @@ pub unsafe extern "C" fn otter_iter_free_f64(iter: *mut OtterFloatIterator) {
 
 #[derive(Debug)]
 pub struct OtterArrayIterator {
-    values: Vec<i64>, // Store i64 values for iteration
+    values: Vec<Value>,
     index: usize,
 }
 
 #[derive(Debug)]
 pub struct OtterStringIterator {
-    chars: Vec<i64>, // Store character codes as i64
+    chars: Vec<String>,
     index: usize,
 }
 
@@ -265,27 +338,10 @@ pub unsafe extern "C" fn otter_iter_array(
 
     // Look up the list in the global lists map
     let lists = LISTS.read();
-    let values = if let Some(list) = lists.get(&handle_id) {
-        // Convert the Vec<Value> to Vec<i64> for iteration
-        // For now, we'll extract numeric values and convert others to 0
-        list.items
-            .iter()
-            .map(|value| match value {
-                Value::I64(i) => *i,
-                Value::F64(f) => *f as i64,
-                Value::Bool(b) => {
-                    if *b {
-                        1
-                    } else {
-                        0
-                    }
-                }
-                _ => 0, // Other types not supported for iteration yet
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let values = lists
+        .get(&handle_id)
+        .map(|list| list.items.clone())
+        .unwrap_or_default();
 
     let iter = Box::new(OtterArrayIterator { values, index: 0 });
     Box::into_raw(iter)
@@ -304,20 +360,20 @@ pub unsafe extern "C" fn otter_iter_has_next_array(iter: *mut OtterArrayIterator
     iter_ref.index < iter_ref.values.len()
 }
 
-/// Get the next element from an array iterator.
+/// Get the next element from an array iterator as a tagged runtime value handle.
 ///
 /// # Safety
 /// `iter` must be valid and not null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn otter_iter_next_array(iter: *mut OtterArrayIterator) -> i64 {
+pub unsafe extern "C" fn otter_iter_next_array(iter: *mut OtterArrayIterator) -> u64 {
     if iter.is_null() {
         return 0;
     }
     let iter_ref = unsafe { &mut *iter };
     if iter_ref.index < iter_ref.values.len() {
-        let value = iter_ref.values[iter_ref.index];
+        let value = iter_ref.values[iter_ref.index].clone();
         iter_ref.index += 1;
-        value
+        builtins::encode_runtime_value(&value)
     } else {
         0
     }
@@ -352,8 +408,8 @@ pub unsafe extern "C" fn otter_iter_string(
     let c_str = unsafe { CStr::from_ptr(str_ptr as *const c_char) };
     let rust_str = c_str.to_str().unwrap_or_default();
 
-    // Convert string to vector of character codes (i64)
-    let chars: Vec<i64> = rust_str.chars().map(|c| c as i64).collect();
+    // Convert string into owned UTF-8 scalar values so we preserve multi-byte characters.
+    let chars: Vec<String> = rust_str.chars().map(|c| c.to_string()).collect();
 
     let iter = Box::new(OtterStringIterator { chars, index: 0 });
     Box::into_raw(iter)
@@ -372,20 +428,20 @@ pub unsafe extern "C" fn otter_iter_has_next_string(iter: *mut OtterStringIterat
     iter_ref.index < iter_ref.chars.len()
 }
 
-/// Retrieve the next character code from a string iterator.
+/// Retrieve the next character as a tagged runtime value.
 ///
 /// # Safety
 /// `iter` must be valid and not null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn otter_iter_next_string(iter: *mut OtterStringIterator) -> i64 {
+pub unsafe extern "C" fn otter_iter_next_string(iter: *mut OtterStringIterator) -> u64 {
     if iter.is_null() {
         return 0;
     }
     let iter_ref = unsafe { &mut *iter };
     if iter_ref.index < iter_ref.chars.len() {
-        let char_code = iter_ref.chars[iter_ref.index];
+        let char_value = iter_ref.chars[iter_ref.index].clone();
         iter_ref.index += 1;
-        char_code
+        builtins::encode_runtime_value(&Value::String(char_value))
     } else {
         0
     }
@@ -419,6 +475,12 @@ fn register_exception_runtime_symbols(registry: &SymbolRegistry) {
     });
 
     registry.register(FfiFunction {
+        name: "__otter_throw_typed".into(),
+        symbol: "otter_throw_typed_exception".into(),
+        signature: FfiSignature::new(vec![FfiType::Str, FfiType::Str], FfiType::Unit),
+    });
+
+    registry.register(FfiFunction {
         name: "__otter_has_exception".into(),
         symbol: "otter_has_exception".into(),
         signature: FfiSignature::new(vec![], FfiType::Bool),
@@ -427,6 +489,18 @@ fn register_exception_runtime_symbols(registry: &SymbolRegistry) {
     registry.register(FfiFunction {
         name: "__otter_get_exception_message".into(),
         symbol: "otter_get_exception_message".into(),
+        signature: FfiSignature::new(vec![], FfiType::Str),
+    });
+
+    registry.register(FfiFunction {
+        name: "__otter_get_exception_type".into(),
+        symbol: "otter_get_exception_type".into(),
+        signature: FfiSignature::new(vec![], FfiType::Str),
+    });
+
+    registry.register(FfiFunction {
+        name: "__otter_get_exception_stack".into(),
+        symbol: "otter_get_exception_stack_trace".into(),
         signature: FfiSignature::new(vec![], FfiType::Str),
     });
 
