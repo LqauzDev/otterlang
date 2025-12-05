@@ -1653,6 +1653,33 @@ impl<'ctx> Compiler<'ctx> {
                     "opaque_to_f64",
                 )?)
             }
+            // Tuple to Struct coercion (for FFI compatibility)
+            (OtterType::Tuple(_), OtterType::Struct(_)) => {
+                // Cannot bitcast aggregates directly. Must go through memory.
+                if let Some(target_llvm_ty) = self.basic_type(to_ty)? {
+                    // Create stack slot for source value
+                    let src_ty = value.get_type();
+                    let alloca = self.builder.build_alloca(src_ty, "coercion_slot")?;
+                    self.builder.build_store(alloca, value)?;
+
+                    // Cast pointer to target type
+                    let target_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                    // In opaque pointer world (LLVM 15+), pointer casts are no-ops or just type changes
+                    // But we might need to be explicit if using typed pointers or for clarity
+                    // Actually, build_bit_cast on pointer works
+                    let cast_ptr = self
+                        .builder
+                        .build_bit_cast(alloca, target_ptr_ty, "coercion_cast")?
+                        .into_pointer_value();
+
+                    // Load as target type
+                    Ok(self
+                        .builder
+                        .build_load(target_llvm_ty, cast_ptr, "coerced_struct")?)
+                } else {
+                    bail!("Cannot resolve target struct type for coercion")
+                }
+            }
             (OtterType::Bool, OtterType::Opaque) => {
                 let bool_val = value.into_int_value();
                 Ok(self

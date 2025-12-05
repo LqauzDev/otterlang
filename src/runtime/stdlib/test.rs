@@ -17,8 +17,8 @@ pub struct TestPoint {
 ///
 /// this function dereferences a raw pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn otter_test_assert(condition: i64, message: *const c_char) -> i32 {
-    if condition != 0 {
+pub unsafe extern "C" fn otter_test_assert(condition: bool, message: *const c_char) -> i32 {
+    if condition {
         return 0; // Success
     }
 
@@ -159,7 +159,7 @@ pub unsafe extern "C" fn otter_test_assert_approx_eq(
 ///
 /// this function dereferences a raw pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn otter_test_assert_true(condition: i64, message: *const c_char) -> i32 {
+pub unsafe extern "C" fn otter_test_assert_true(condition: bool, message: *const c_char) -> i32 {
     unsafe { otter_test_assert(condition, message) }
 }
 
@@ -169,8 +169,8 @@ pub unsafe extern "C" fn otter_test_assert_true(condition: i64, message: *const 
 ///
 /// this function dereferences a raw pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn otter_test_assert_false(condition: i64, message: *const c_char) -> i32 {
-    unsafe { otter_test_assert(if condition == 0 { 1 } else { 0 }, message) }
+pub unsafe extern "C" fn otter_test_assert_false(condition: bool, message: *const c_char) -> i32 {
+    unsafe { otter_test_assert(!condition, message) }
 }
 
 /// returns the input point unchanged
@@ -242,7 +242,7 @@ fn register_std_test_symbols(registry: &SymbolRegistry) {
     registry.register(FfiFunction {
         name: "test.assert".into(),
         symbol: "otter_test_assert".into(),
-        signature: FfiSignature::new(vec![FfiType::I64, FfiType::Str], FfiType::I32),
+        signature: FfiSignature::new(vec![FfiType::Bool, FfiType::Str], FfiType::I32),
     });
 
     registry.register(FfiFunction {
@@ -269,13 +269,13 @@ fn register_std_test_symbols(registry: &SymbolRegistry) {
     registry.register(FfiFunction {
         name: "test.assert_true".into(),
         symbol: "otter_test_assert_true".into(),
-        signature: FfiSignature::new(vec![FfiType::I64, FfiType::Str], FfiType::I32),
+        signature: FfiSignature::new(vec![FfiType::Bool, FfiType::Str], FfiType::I32),
     });
 
     registry.register(FfiFunction {
         name: "test.assert_false".into(),
         symbol: "otter_test_assert_false".into(),
-        signature: FfiSignature::new(vec![FfiType::I64, FfiType::Str], FfiType::I32),
+        signature: FfiSignature::new(vec![FfiType::Bool, FfiType::Str], FfiType::I32),
     });
 
     registry.register(FfiFunction {

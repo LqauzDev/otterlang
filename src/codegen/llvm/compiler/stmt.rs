@@ -53,7 +53,7 @@ impl<'ctx> Compiler<'ctx> {
             }
             Statement::Let {
                 name,
-                ty: _,
+                ty,
                 expr,
                 public: _,
             } => {
@@ -63,8 +63,15 @@ impl<'ctx> Compiler<'ctx> {
                     value: val_value,
                 } = val;
 
+                // Determine variable type: use annotation if present, otherwise inferred type
+                let var_ty = if let Some(annotation) = ty {
+                    self.otter_type_from_annotation(annotation.as_ref())
+                } else {
+                    val_ty.clone()
+                };
+
                 // Skip allocation for Unit types
-                if let Some(_basic_ty) = self.basic_type(val_ty.clone())? {
+                if let Some(_basic_ty) = self.basic_type(var_ty.clone())? {
                     // Use create_entry_block_alloca to ensure alloca is in the entry block
                     // This prevents stack overflow in loops and ensures dominance
                     let function = self
@@ -74,15 +81,19 @@ impl<'ctx> Compiler<'ctx> {
                         .get_parent()
                         .unwrap();
                     let alloca =
-                        self.create_entry_block_alloca(function, name.as_ref(), val_ty.clone())?;
+                        self.create_entry_block_alloca(function, name.as_ref(), var_ty.clone())?;
+
                     if let Some(v) = val_value {
-                        self.builder.build_store(alloca, v)?;
+                        // Coerce value to variable type if needed
+                        let coerced_val = self.coerce_type(v, val_ty, var_ty.clone())?;
+                        self.builder.build_store(alloca, coerced_val)?;
                     }
+
                     ctx.insert(
                         name.as_ref().to_string(),
                         Variable {
                             ptr: alloca,
-                            ty: val_ty,
+                            ty: var_ty,
                         },
                     );
                 }
