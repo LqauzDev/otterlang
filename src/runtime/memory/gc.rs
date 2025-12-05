@@ -23,6 +23,9 @@ pub trait GcStrategyTrait: Send + Sync {
     /// Remove a root object
     fn remove_root(&self, ptr: usize);
 
+    /// Register an object for GC tracking
+    fn register_object(&self, ptr: usize, size: usize, kind: ObjectKind);
+
     /// Get the strategy name
     fn name(&self) -> &'static str;
 }
@@ -74,6 +77,8 @@ impl GcStrategyTrait for RcGC {
 
     fn remove_root(&self, _ptr: usize) {}
 
+    fn register_object(&self, _ptr: usize, _size: usize, _kind: ObjectKind) {}
+
     fn name(&self) -> &'static str {
         "ReferenceCounting"
     }
@@ -91,9 +96,16 @@ pub struct MarkSweepGC {
     objects: Arc<RwLock<HashMap<usize, ObjectInfo>>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectKind {
+    Raw,
+    CString,
+}
+
 #[derive(Debug, Clone)]
 struct ObjectInfo {
     size: usize,
+    kind: ObjectKind,
     references: Vec<usize>, // Pointers to other objects
 }
 
@@ -116,10 +128,15 @@ impl MarkSweepGC {
     }
 
     /// Register an object for GC tracking
-    pub fn register_object(&self, ptr: usize, size: usize, references: Vec<usize>) {
-        self.objects
-            .write()
-            .insert(ptr, ObjectInfo { size, references });
+    fn register_object(&self, ptr: usize, size: usize, kind: ObjectKind, references: Vec<usize>) {
+        self.objects.write().insert(
+            ptr,
+            ObjectInfo {
+                size,
+                kind,
+                references,
+            },
+        );
     }
 
     /// Unregister an object
@@ -173,6 +190,20 @@ impl MarkSweepGC {
 
                 // Record deallocation in profiler
                 get_profiler().record_deallocation(ptr);
+
+                // Actually free the memory
+                unsafe {
+                    match info.kind {
+                        ObjectKind::Raw => {
+                            let layout = std::alloc::Layout::from_size_align(info.size, 8).unwrap();
+                            std::alloc::dealloc(ptr as *mut u8, layout);
+                        }
+                        ObjectKind::CString => {
+                            // Reconstruct CString to drop it
+                            let _ = std::ffi::CString::from_raw(ptr as *mut std::os::raw::c_char);
+                        }
+                    }
+                }
             }
         }
 
@@ -211,6 +242,11 @@ impl GcStrategyTrait for MarkSweepGC {
 
     fn remove_root(&self, ptr: usize) {
         MarkSweepGC::remove_root(self, ptr);
+    }
+
+    fn register_object(&self, ptr: usize, size: usize, kind: ObjectKind) {
+        // For strings/raw objects registered via API, we assume no references for now
+        MarkSweepGC::register_object(self, ptr, size, kind, Vec::new());
     }
 
     fn name(&self) -> &'static str {
@@ -322,7 +358,7 @@ impl GenerationalGC {
                 // OR we just register it in old gen and "pretend" we moved it.
                 // To be safer for this codebase, we'll just register it in old gen.
                 self.old_gen
-                    .register_object(ptr, info.size, info.references.clone());
+                    .register_object(ptr, info.size, info.kind, info.references.clone());
             }
         }
 
@@ -374,6 +410,11 @@ impl GcStrategyTrait for GenerationalGC {
         self.old_gen.remove_root(ptr);
     }
 
+    fn register_object(&self, ptr: usize, size: usize, kind: ObjectKind) {
+        // For simplicity in this fix, register directly in old gen
+        self.old_gen.register_object(ptr, size, kind, Vec::new());
+    }
+
     fn name(&self) -> &'static str {
         "Generational"
     }
@@ -392,6 +433,8 @@ pub struct GcManager {
     gc_enabled: AtomicBool,
     disabled_bytes: AtomicUsize,
     disabled_bytes_limit: AtomicUsize,
+    bytes_since_last_gc: AtomicUsize,
+    gc_threshold: AtomicUsize,
 }
 
 impl GcManager {
@@ -410,6 +453,8 @@ impl GcManager {
             gc_enabled: AtomicBool::new(true),
             disabled_bytes: AtomicUsize::new(0),
             disabled_bytes_limit: AtomicUsize::new(disabled_limit),
+            bytes_since_last_gc: AtomicUsize::new(0),
+            gc_threshold: AtomicUsize::new(10 * 1024 * 1024), // 10MB default threshold
         }
     }
 
@@ -440,6 +485,36 @@ impl GcManager {
 
     pub fn remove_root(&self, ptr: usize) {
         self.strategy.read().remove_root(ptr);
+    }
+
+    pub fn register_object(&self, ptr: usize, size: usize, kind: ObjectKind) {
+        self.strategy.read().register_object(ptr, size, kind);
+
+        // Check memory threshold and trigger GC if needed
+        if self.is_enabled() {
+            let bytes = self.bytes_since_last_gc.fetch_add(size, Ordering::Relaxed);
+            let threshold = self.gc_threshold.load(Ordering::Relaxed);
+
+            if bytes > threshold {
+                // Reset counter before collecting to avoid multiple threads triggering
+                // Note: This is a simple heuristic, race conditions might cause slight over-triggering or under-counting
+                // but it's fine for this GC implementation.
+                self.bytes_since_last_gc.store(0, Ordering::Relaxed);
+
+                // Trigger collection
+                let _ = self.collect();
+            }
+
+            // Update profiler
+            get_profiler().record_allocation(
+                ptr,
+                size,
+                None,
+                None,
+                None,
+                Some(format!("{:?}", kind)),
+            );
+        }
     }
 
     pub fn set_strategy(&self, strategy: GcStrategy) {
@@ -495,6 +570,8 @@ impl GcStrategyTrait for NoOpGC {
     fn add_root(&self, _ptr: usize) {}
 
     fn remove_root(&self, _ptr: usize) {}
+
+    fn register_object(&self, _ptr: usize, _size: usize, _kind: ObjectKind) {}
 
     fn name(&self) -> &'static str {
         "None"

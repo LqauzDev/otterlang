@@ -1,6 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
+use crate::runtime::memory::gc::{ObjectKind, get_gc};
 use crate::runtime::symbol_registry::{FfiFunction, FfiSignature, FfiType, SymbolRegistry};
 
 /// Format a float value to string
@@ -10,27 +11,51 @@ pub extern "C" fn otter_format_float(value: f64) -> *mut c_char {
         .trim_end_matches('0')
         .trim_end_matches('.')
         .to_string();
-    CString::new(formatted)
+    let s = CString::new(formatted)
         .map(CString::into_raw)
-        .unwrap_or_else(|_| std::ptr::null_mut())
+        .unwrap_or_else(|_| std::ptr::null_mut());
+
+    if !s.is_null() {
+        unsafe {
+            let len = std::ffi::CStr::from_ptr(s).to_bytes_with_nul().len();
+            get_gc().register_object(s as usize, len, ObjectKind::CString);
+        }
+    }
+    s
 }
 
 /// Format an integer value to string
 #[unsafe(no_mangle)]
 pub extern "C" fn otter_format_int(value: i64) -> *mut c_char {
     let formatted = format!("{}", value);
-    CString::new(formatted)
+    let s = CString::new(formatted)
         .map(CString::into_raw)
-        .unwrap_or_else(|_| std::ptr::null_mut())
+        .unwrap_or_else(|_| std::ptr::null_mut());
+
+    if !s.is_null() {
+        unsafe {
+            let len = std::ffi::CStr::from_ptr(s).to_bytes_with_nul().len();
+            get_gc().register_object(s as usize, len, ObjectKind::CString);
+        }
+    }
+    s
 }
 
 /// Format a boolean value to string
 #[unsafe(no_mangle)]
 pub extern "C" fn otter_format_bool(value: bool) -> *mut c_char {
     let formatted = if value { "true" } else { "false" };
-    CString::new(formatted)
+    let s = CString::new(formatted)
         .map(CString::into_raw)
-        .unwrap_or_else(|_| std::ptr::null_mut())
+        .unwrap_or_else(|_| std::ptr::null_mut());
+
+    if !s.is_null() {
+        unsafe {
+            let len = std::ffi::CStr::from_ptr(s).to_bytes_with_nul().len();
+            get_gc().register_object(s as usize, len, ObjectKind::CString);
+        }
+    }
+    s
 }
 
 /// Concatenate two strings.
@@ -56,9 +81,15 @@ pub unsafe extern "C" fn otter_str_concat(s1: *const c_char, s2: *const c_char) 
         };
 
         let result = format!("{}{}", str1, str2);
-        CString::new(result)
+        let s = CString::new(result)
             .map(CString::into_raw)
-            .unwrap_or_else(|_| std::ptr::null_mut())
+            .unwrap_or_else(|_| std::ptr::null_mut());
+
+        if !s.is_null() {
+            let len = CStr::from_ptr(s).to_bytes_with_nul().len();
+            get_gc().register_object(s as usize, len, ObjectKind::CString);
+        }
+        s
     }
 }
 
@@ -109,9 +140,17 @@ pub unsafe extern "C" fn otter_string_from_literal(ptr: *const c_char) -> *mut c
 
     unsafe {
         match CStr::from_ptr(ptr).to_str() {
-            Ok(s) => CString::new(s)
-                .map(CString::into_raw)
-                .unwrap_or_else(|_| std::ptr::null_mut()),
+            Ok(s) => {
+                let new_s = CString::new(s)
+                    .map(CString::into_raw)
+                    .unwrap_or_else(|_| std::ptr::null_mut());
+
+                if !new_s.is_null() {
+                    let len = CStr::from_ptr(new_s).to_bytes_with_nul().len();
+                    get_gc().register_object(new_s as usize, len, ObjectKind::CString);
+                }
+                new_s
+            }
             Err(_) => std::ptr::null_mut(),
         }
     }

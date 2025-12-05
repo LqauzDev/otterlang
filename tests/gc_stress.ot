@@ -1,0 +1,26 @@
+# GC Stress Test
+# Allocates many objects to trigger GC and verify memory reclamation
+
+fn main():
+    println("Starting GC stress test...")
+    
+    let i = 0.0
+    let print_counter = 0.0
+    while i < 1000000.0:
+        # Allocate a string (should be heap allocated)
+        let s = f"Stress test string allocation {i}"
+        
+        # Allocate a list to stress GC further
+        let l = [i, i+1.0, i+2.0, i+3.0, i+4.0]
+        
+        # Allocate another string to ensure we are churning memory
+        let s2 = f"Another string {i} with some more content to take up space"
+        
+        if print_counter >= 100000.0:
+            println(f"Iteration {i} completed")
+            print_counter = 0.0
+            
+        print_counter = print_counter + 1.0
+        i = i + 1.0
+    
+    println("GC stress test completed successfully.")

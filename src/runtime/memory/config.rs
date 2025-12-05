@@ -50,7 +50,7 @@ pub struct GcConfig {
 impl Default for GcConfig {
     fn default() -> Self {
         Self {
-            strategy: GcStrategy::Generational,
+            strategy: GcStrategy::MarkSweep,
             memory_threshold: 0.8, // 80% memory usage
             gc_interval_ms: 5000,  // 5 seconds
             auto_gc: true,
