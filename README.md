@@ -1,4 +1,4 @@
-# OtterLang
+<h1 align="center">OtterLang</h1>
 
 <div align="center">
   <picture>
