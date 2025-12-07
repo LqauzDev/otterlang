@@ -2,7 +2,9 @@
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
+- [Getting the Source Code](#getting-the-source-code)
+- [Installing Nix](#installing-nix)
+- [Quick Start with Nix](#quick-start-with-nix-recommended)
 - [Installation](#installation)
   - [Using Nix (Recommended)](#using-nix-recommended)
   - [Manual Installation](#manual-installation)
@@ -16,6 +18,52 @@
   - [Environment Variables](#environment-variables)
 
 This guide covers installing OtterLang on various platforms. The easiest way is using Nix, but manual installation is also supported.
+
+## Getting the Source Code
+
+First, clone the OtterLang repository:
+
+```bash
+git clone https://github.com/jonathanmagambo/otterlang.git
+cd otterlang
+```
+
+Now you're ready to build OtterLang. Choose one of the installation methods below.
+
+## Installing Nix
+
+If you plan to use Nix (recommended), you'll need to install it first. Nix is a package manager that provides a reproducible development environment.
+
+### macOS and Linux
+
+The easiest way to install Nix is using the official installer:
+
+```bash
+# Run the Nix installer
+sh <(curl -L https://nixos.org/nix/install) --daemon
+```
+
+After installation, restart your terminal or run:
+
+```bash
+. ~/.nix-profile/etc/profile.d/nix.sh
+```
+
+### Windows
+
+On Windows, you can use Nix through WSL2 (Windows Subsystem for Linux) or use NixOS in a virtual machine. Alternatively, you can follow the manual installation instructions below.
+
+For more detailed installation instructions, visit the [official Nix installation guide](https://nixos.org/download.html).
+
+### Verifying Nix Installation
+
+After installing Nix, verify it's working:
+
+```bash
+nix --version
+```
+
+You should see the Nix version number. If you encounter any issues, refer to the [Nix troubleshooting guide](https://nixos.org/manual/nix/stable/installation/installing-binary.html#troubleshooting).
 
 ## Quick Start with Nix (Recommended)
 
@@ -48,6 +96,10 @@ If you prefer not to use Nix, you can install dependencies manually.
 ### macOS
 
 ```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/jonathanmagambo/otterlang.git
+cd otterlang
+
 # Install LLVM 18
 brew install llvm@18
 
@@ -66,6 +118,10 @@ cargo +nightly build --release
 ### Ubuntu/Debian
 
 ```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/jonathanmagambo/otterlang.git
+cd otterlang
+
 # Install LLVM 18
 sudo apt-get update
 sudo apt-get install -y llvm-18 llvm-18-dev clang-18
@@ -84,6 +140,10 @@ cargo +nightly build --release
 ### Fedora/RHEL
 
 ```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/jonathanmagambo/otterlang.git
+cd otterlang
+
 # Install LLVM 18
 sudo dnf -y install llvm18 llvm18-devel clang18
 
@@ -103,6 +163,10 @@ cargo +nightly build --release
 **Important:** You must use the **x64 Native Tools Command Prompt for VS 2022** (or Visual Studio Developer Command Prompt) to build. The MSVC linker requires environment variables that are only set in the Developer Command Prompt.
 
 ```powershell
+# Clone the repository (if you haven't already)
+git clone https://github.com/jonathanmagambo/otterlang.git
+cd otterlang
+
 # Method 1: Using winget (recommended)
 winget install -e --id LLVM.LLVM -v "18.1.8" --silent --accept-package-agreements --accept-source-agreements
 $env:LLVM_SYS_181_PREFIX = "C:\\Program Files\\LLVM"
