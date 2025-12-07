@@ -91,13 +91,21 @@ otter test path/to/tests        # Run snapshot-style tests
 
 Cross-compilation targets (including WebAssembly) are described in the [Getting Started Guide](docs/GETTING_STARTED.md#building-executables).
 
-<h1 align="center">Examples</h1>
-
-Browse [docs/EXAMPLES.md](docs/EXAMPLES.md) and the `examples/` tree for runnable snippets that stress the parser, runtime, and FFI bridge.
+For runnable code examples that demonstrate the parser, runtime, and FFI bridge, check out [docs/EXAMPLES.md](docs/EXAMPLES.md) and browse the `examples/` directory in the repository.
 
 <h1 align="center">VSCode Extension</h1>
 
-We ship a VS Code extension with syntax highlighting, snippets, diagnostics, and an LSP server. Installation and release notes live in [vscode-extension/README.md](vscode-extension/README.md).
+Enhance your OtterLang development experience with our official VS Code extension, providing a complete development environment:
+
+- **Syntax Highlighting** – Full support for OtterLang syntax with color-coded keywords, functions, and types
+- **Language Server Protocol (LSP)** – Real-time diagnostics, error reporting, and code intelligence
+- **Code Snippets** – Quick code templates for common patterns and boilerplate
+- **Integrated Diagnostics** – Instant feedback on syntax errors, type mismatches, and other issues
+- **Editor Integration** – Seamless integration with VS Code's built-in features
+
+Installation instructions, feature updates, and release notes are available in the [vscode-extension README](vscode-extension/README.md).
+
+> **Note:** A Zed extension is coming soon! Stay tuned for updates.
 
 <h1 align="center">Documentation</h1>
 
