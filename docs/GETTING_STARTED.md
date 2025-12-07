@@ -109,12 +109,6 @@ $env:LLVM_SYS_181_PREFIX = "C:\\Program Files\\LLVM"
 $env:LLVM_SYS_180_PREFIX = $env:LLVM_SYS_181_PREFIX
 $env:Path = "$env:LLVM_SYS_181_PREFIX\\bin;$env:Path"
 
-# Method 2: Using Chocolatey (alternative)
-choco install llvm --version=18.1.8 -y
-$env:LLVM_SYS_181_PREFIX = "C:\\Program Files\\LLVM"
-$env:LLVM_SYS_180_PREFIX = $env:LLVM_SYS_181_PREFIX
-$env:Path = "$env:LLVM_SYS_181_PREFIX\\bin;$env:Path"
-
 # Install Rust nightly
 rustup toolchain install nightly
 rustup default nightly
