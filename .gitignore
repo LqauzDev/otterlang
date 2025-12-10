@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target/
+/crates/otterc_runtime/target/
 **/*.rs.bk
 *.pdb
 
@@ -58,3 +59,6 @@ ffi/*/target/
 # .deb build artifacts
 package/otterlang
 package/otterlang.deb
+
+# Example build artifacts
+examples/**/target/
