@@ -631,7 +631,7 @@ impl GcCliOptions {
             Some(value) => Some(
                 value
                     .parse::<GcStrategy>()
-                    .map_err(|_| anyhow!("invalid GC strategy '{}'", value))?,
+                    .or(Err(anyhow!("invalid GC strategy '{}'", value)))?,
             ),
             None => None,
         };
