@@ -2,3 +2,8 @@
 	path = third_party/limine
 	url = https://codeberg.org/Limine/Limine.git
 	branch = v10.5.0-binary
+
+[submodule "Users/Next-Level/Downloads/CASIO/third_party/limine"]
+	path = Users/Next-Level/Downloads/CASIO/third_party/limine
+	url = https://codeberg.org/Limine/Limine.git
+	branch = v10.5.0-binary
