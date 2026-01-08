@@ -1,0 +1,61 @@
+# Simple integration Makefile for GeekIR
+# Copy this to your project and modify as needed
+
+# Compiler settings
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c99 -O2
+
+# LLVM configuration
+LLVM_CONFIG = llvm-config
+LLVM_CFLAGS = $(shell $(LLVM_CONFIG) --cflags)
+LLVM_LDFLAGS = $(shell $(LLVM_CONFIG) --ldflags --libs core irreader bitreader bitwriter analysis passes transformutils support)
+
+# Add GeekIR header directory
+INCLUDES = -I.
+
+# Combine flags
+ALL_CFLAGS = $(CFLAGS) $(LLVM_CFLAGS) $(INCLUDES)
+ALL_LDFLAGS = $(LLVM_LDFLAGS)
+
+# Your source files (modify these)
+SOURCES = your_program.c
+OBJECTS = $(SOURCES:.c=.o)
+TARGET = your_program
+
+# Default target
+all: $(TARGET)
+
+# Build executable
+$(TARGET): $(OBJECTS)
+	$(CC) -o $@ $^ $(ALL_LDFLAGS)
+
+# Compile source files
+%.o: %.c geekir.h
+	$(CC) $(ALL_CFLAGS) -c $< -o $@
+
+# Clean build artifacts
+clean:
+	rm -f $(OBJECTS) $(TARGET)
+
+# Run the program
+run: $(TARGET)
+	./$(TARGET)
+
+# Help target
+help:
+	@echo "Available targets:"
+	@echo "  all     - Build the program"
+	@echo "  clean   - Remove build artifacts"
+	@echo "  run     - Build and run the program"
+	@echo "  help    - Show this help"
+	@echo ""
+	@echo "Make sure LLVM is installed and llvm-config is in your PATH"
+
+# Check LLVM installation
+check-llvm:
+	@which $(LLVM_CONFIG) > /dev/null || (echo "Error: llvm-config not found. Install LLVM development packages." && exit 1)
+	@echo "LLVM version: $$($(LLVM_CONFIG) --version)"
+	@echo "LLVM CFLAGS: $(LLVM_CFLAGS)"
+	@echo "LLVM LDFLAGS: $(LLVM_LDFLAGS)"
+
+.PHONY: all clean run help check-llvm

@@ -1,0 +1,17 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Find LLVM dependency
+find_dependency(LLVM REQUIRED CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/GeekIRTargets.cmake")
+
+# Set variables for users
+set(GeekIR_VERSION @PROJECT_VERSION@)
+set(GeekIR_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(GeekIR_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(GeekIR_VERSION_PATCH @PROJECT_VERSION_PATCH@)
+
+# Check that the requested components exist
+check_required_components(GeekIR)
