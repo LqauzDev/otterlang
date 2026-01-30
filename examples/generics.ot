@@ -1,0 +1,17 @@
+# Generics examples
+
+pub struct Pair<T, U>:
+    first: T
+    second: U
+
+pub fn identity<T>(x: T) -> T:
+    return x
+
+pub fn swap<T, U>(p: Pair<T, U>) -> Pair<U, T>:
+    return Pair(first=p.second, second=p.first)
+
+fn main():
+    let p = Pair(first=1, second="one")
+    let q = swap(p)
+    print(q.first)
+    print(identity<string>("hello"))

@@ -38,6 +38,13 @@ This directory contains runnable samples that exercise the language surface area
 - **Demonstrates**: Type parameters, specialized instantiations, generic helpers
 - **Run**: `otter run examples/basic/generic_struct_test.ot`
 
+### Generics
+
+**[`examples/generics.ot`](../examples/generics.ot)**
+- **Purpose**: Demonstrate function and struct generics
+- **Demonstrates**: `fn` generic parameters, generic structs, instantiation and explicit type arguments
+- **Run**: `otter run examples/generics.ot`
+
 ### Control Flow and Algorithms
 
 **[`examples/basic/fibonacci.ot`](../examples/basic/fibonacci.ot)**

@@ -120,6 +120,7 @@ pub struct Function {
     pub ret_ty: Option<Node<Type>>,
     pub body: Node<Block>,
     pub public: bool,
+    pub generics: Vec<String>,
 }
 
 impl Function {
@@ -135,6 +136,7 @@ impl Function {
             ret_ty,
             body,
             public: false,
+            generics: Vec::new(),
         }
     }
 
@@ -150,6 +152,41 @@ impl Function {
             ret_ty,
             body,
             public: true,
+            generics: Vec::new(),
+        }
+    }
+
+    pub fn new_with_generics(
+        name: impl Into<String>,
+        params: Vec<Node<Param>>,
+        ret_ty: Option<Node<Type>>,
+        body: Node<Block>,
+        generics: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            ret_ty,
+            body,
+            public: false,
+            generics,
+        }
+    }
+
+    pub fn new_public_with_generics(
+        name: impl Into<String>,
+        params: Vec<Node<Param>>,
+        ret_ty: Option<Node<Type>>,
+        body: Node<Block>,
+        generics: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            ret_ty,
+            body,
+            public: true,
+            generics,
         }
     }
 }

@@ -237,5 +237,5 @@ Manual entries override auto-generated ones with the same `name`.
 
 1. Trait methods still need manual entries in `bridge.yaml` (inherent impl methods are supported)
 2. Enum pattern matching, iterators, and macros are not exposed
-3. Generics beyond basic scalar substitutions become `opaque` handles for complex cases
+3. Generic types are supported by the language. When generating an FFI bridge, only concrete instantiations whose type arguments map to supported primitive types (for example `Option<i64>` or `Vec<f64>`) are exported as transparent mappings. Generic types whose arguments cannot be mapped are represented as opaque handles on the Otter side and must be accessed through manually-provided bridge helpers.
 4. Building bridges requires Cargo and the nightly Rust toolchain

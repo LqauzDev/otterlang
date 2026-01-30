@@ -9,6 +9,10 @@ Remaining work for v0.1 release.
 - **Traits/polymorphism**: Implement trait system
 - **Iterator abstraction**: Add iterator trait for custom collections
 
+## Recent Additions
+
+- **Function-level generics**: `fn` declarations now accept generic parameters; generics participate in type checking and inference across the compiler and standard library.
+
 ### Runtime & Codegen
 - **`await` return values**: Currently returns Unit, should return task result
 - **`spawn` context cleanup**: Free captured variables when tasks complete

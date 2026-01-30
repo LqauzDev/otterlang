@@ -113,7 +113,15 @@ pub enum Option<T>:
     None
 ```
 
-Functions do not currently accept `<T>` parameter lists; shared generic behavior is modeled through parameterized data structures and type aliases instead.
+Functions, structs, enums, and `type` aliases all accept generic parameter lists. Generic type parameters are declared with angle brackets after the identifier. Functions may declare type parameters and those parameters participate in type inference and checking. Example:
+
+```otter
+fn identity<T>(x: T) -> T:
+    return x
+
+fn swap<T, U>(p: Pair<T, U>) -> Pair<U, T>:
+    return Pair(first=p.second, second=p.first)
+```
 
 ### Type Aliases
 

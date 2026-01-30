@@ -1218,21 +1218,32 @@ fn program_parser() -> impl Parser<TokenKind, Program, Error = Simple<TokenKind>
 
     let function_keyword = just(TokenKind::Fn);
 
+    // Generic parameter list for functions: `<T, U>` or absent
+    let function_generics = || {
+        identifier_parser()
+            .separated_by(just(TokenKind::Comma))
+            .allow_trailing()
+            .delimited_by(just(TokenKind::Lt), just(TokenKind::Gt))
+            .or_not()
+            .map(|params| params.unwrap_or_default())
+    };
+
     let function = pub_keyword
         .clone()
         .then(function_keyword.clone())
         .then(identifier_parser())
+        .then(function_generics())
         .then(function_params)
         .then(function_ret_type)
         .then_ignore(just(TokenKind::Colon))
         .then_ignore(newline.clone())
         .then(block.clone())
-        .map_with_span(|(((((pub_kw, _fn), name), params), ret_ty), body), span| {
+        .map_with_span(|((((((pub_kw, _fn), name), generics), params), ret_ty), body), span| {
             Node::new(
                 if pub_kw.is_some() {
-                    Function::new_public(name, params, ret_ty, body)
+                    Function::new_public_with_generics(name, params, ret_ty, body, generics)
                 } else {
-                    Function::new(name, params, ret_ty, body)
+                    Function::new_with_generics(name, params, ret_ty, body, generics)
                 },
                 span,
             )

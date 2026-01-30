@@ -798,32 +798,31 @@ fn main():
 
 ## Generic Types
 
-While OtterLang doesn't support generic function parameters yet, you can use generic structs and enums.
+OtterLang supports generic types for `struct`, `enum`, `type` aliases, and `fn` declarations. Generic type parameters are declared with angle brackets and participate in type checking and inference.
 
 ### Generic Structs
 
 ```otter
 struct Container<T>:
     items: list<T>
-    
+
     fn add(self, item: T) -> unit:
         self.items += [item]
-    
+
     fn get(self, index: int) -> Option<T>:
         if index >= 0 and index < len(self.items):
             return Option.Some(self.items[index])
         return Option.None
 
 fn main():
-    # Create containers with different types
     string_container = Container(items=[])
     string_container.add("hello")
     string_container.add("world")
-    
+
     int_container = Container(items=[])
     int_container.add(1)
     int_container.add(2)
-    
+
     match string_container.get(0):
         case Option.Some(value):
             println(f"First string: {value}")
@@ -831,13 +830,23 @@ fn main():
             println("No value")
 ```
 
-### Generic Enums
+### Generic Functions
 
-The standard library provides generic enums:
+Functions may declare generic parameters. The following examples show common patterns.
 
 ```otter
-use std/core
+fn identity<T>(x: T) -> T:
+    return x
 
+fn swap<T, U>(p: Pair<T, U>) -> Pair<U, T>:
+    return Pair(first=p.second, second=p.first)
+```
+
+### Generic Enums
+
+The standard library provides `Option<T>` and `Result<T, E>`:
+
+```otter
 enum Option<T>:
     Some: (T)
     None
@@ -847,10 +856,7 @@ enum Result<T, E>:
     Err: (E)
 ```
 
-These are already available in the standard library, so you typically don't need to define them yourself.
-
-> [!NOTE]
-> Generic function parameters (like `fn first<T>(...)`) are not yet supported. Use type inference or generic structs instead.
+These are available in the standard library and commonly used for error handling and optional values.
 
 ---
 
