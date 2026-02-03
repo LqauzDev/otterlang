@@ -14,4 +14,4 @@ fn main():
     let p = Pair(first=1, second="one")
     let q = swap(p)
     print(q.first)
-    print(identity<string>("hello"))
+    print(identity("hello"))
