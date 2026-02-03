@@ -711,14 +711,49 @@ impl TypeContext {
     pub fn normalize_type(&self, ty: TypeInfo) -> TypeInfo {
         match ty {
             TypeInfo::Generic { base, args } => {
-                if args.is_empty()
-                    && let Some(struct_def) = self.structs.get(&base)
-                {
+                // First, try to resolve this as a struct type (including generic structs)
+                if let Some(struct_def) = self.structs.get(&base) {
+                    // Map struct generic parameters to the provided args, padding with Unknown
+                    let mut normalized_args = if args.is_empty() {
+                        vec![TypeInfo::Unknown; struct_def.generics.len()]
+                    } else if args.len() < struct_def.generics.len() {
+                        let mut padded = args.clone();
+                        padded.extend(std::iter::repeat_n(
+                            TypeInfo::Unknown,
+                            struct_def.generics.len() - padded.len(),
+                        ));
+                        padded
+                    } else {
+                        args.clone()
+                    };
+
+                    if normalized_args.len() > struct_def.generics.len() {
+                        normalized_args.truncate(struct_def.generics.len());
+                    }
+
+                    let substitutions: HashMap<String, TypeInfo> = struct_def
+                        .generics
+                        .iter()
+                        .cloned()
+                        .zip(normalized_args.iter().cloned())
+                        .collect();
+
+                    let fields = struct_def
+                        .fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            let concrete = ty.substitute(&substitutions);
+                            (name.clone(), concrete)
+                        })
+                        .collect();
+
                     return TypeInfo::Struct {
                         name: struct_def.name.clone(),
-                        fields: struct_def.fields.clone(),
+                        fields,
                     };
                 }
+
+                // Next, try to resolve this as an enum type with generics
                 if let Some(enum_ty) = self.build_enum_type(&base, args.clone()) {
                     enum_ty
                 } else {

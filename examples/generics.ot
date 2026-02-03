@@ -4,14 +4,12 @@ pub struct Pair<T, U>:
     first: T
     second: U
 
-pub fn identity<T>(x: T) -> T:
-    return x
-
-pub fn swap<T, U>(p: Pair<T, U>) -> Pair<U, T>:
-    return Pair(first=p.second, second=p.first)
-
 fn main():
-    let p = Pair(first=1, second="one")
-    let q = swap(p)
-    print(q.first)
-    print(identity("hello"))
+    # Use Pair<T, U> with different concrete type arguments
+    let int_str = Pair(first=1, second="one")
+    let str_float = Pair(first="pi", second=3.14)
+
+    print(int_str.first)
+    print(int_str.second)
+    print(str_float.first)
+    print(str_float.second)
