@@ -9,7 +9,7 @@ fn main():
     let int_str = Pair(first=1, second="one")
     let str_float = Pair(first="pi", second=3.14)
 
-    print(int_str.first)
+    print(str(int_str.first))
     print(int_str.second)
     print(str_float.first)
-    print(str_float.second)
+    print(str(str_float.second))
